@@ -2,11 +2,12 @@
 #![no_main]
 
 use core::arch::asm;
+
 use kernel::println;
 
 #[no_mangle]
 unsafe extern "C" fn _start() -> ! {
-    println!("Initializing Luix-OS kernel...");
+    kernel::init();
 
     loop {
         asm!("hlt");

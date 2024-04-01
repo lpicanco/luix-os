@@ -1,6 +1,6 @@
 # Luix Operating System
 
-Luix is a simple operating system that I am developing for learning purposes.
+Luix is a simple operating system that I am developing in Rust for learning purposes.
 
 ## Screenshots
 

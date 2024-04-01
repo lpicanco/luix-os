@@ -4,8 +4,8 @@ use lazy_static::lazy_static;
 use limine::request::FramebufferRequest;
 use spin::Mutex;
 
-use crate::display::font::{FONT_HEIGHT, FONT_WIDTH};
 use crate::{println, trace};
+use crate::display::font::{FONT_HEIGHT, FONT_WIDTH};
 
 mod font;
 
@@ -80,14 +80,17 @@ impl Display {
     fn write_char(&mut self, c: char) {
         match c {
             '\n' => self.new_line(),
+            '\t' => {
+                self.current_column += FONT_WIDTH as u64 * 4;
+            }
             _ => {
                 let char_bitmap = font::DEFAULT_FONT_MAP[c as usize];
                 self.draw_char(self.current_column, self.current_row, char_bitmap);
                 self.current_column += FONT_WIDTH as u64;
-                if self.current_column >= self.width {
-                    self.new_line();
-                }
             }
+        }
+        if self.current_column >= self.width {
+            self.new_line();
         }
     }
 

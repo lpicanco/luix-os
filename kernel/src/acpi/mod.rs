@@ -1,4 +1,5 @@
 use rsdp::Rsdp;
+use spin::Once;
 
 use crate::acpi::madt::Madt;
 use crate::acpi::rsdt::{Rsdt, Signature};
@@ -9,7 +10,12 @@ mod rsdp;
 mod rsdt;
 mod sdt;
 
-struct Acpi {}
+static ACPI: Once<Acpi> = Once::new();
+
+#[derive(Debug)]
+struct Acpi {
+    pub madt: Madt,
+}
 
 impl Acpi {
     fn load() -> Self {
@@ -21,11 +27,11 @@ impl Acpi {
             .expect("Failed to find MADT table");
         trace!("MADT table: {}", madt);
 
-        Acpi {}
+        Acpi { madt }
     }
 }
 
 pub(crate) fn init() {
-    let _ = Acpi::load();
+    ACPI.call_once(Acpi::load);
     println!("ACPI initialized.");
 }

@@ -1,26 +1,23 @@
 use core::fmt;
 
-use lazy_static::lazy_static;
 use limine::request::FramebufferRequest;
 use spin::Mutex;
 
-use crate::{println, trace};
 use crate::display::font::{FONT_HEIGHT, FONT_WIDTH};
+use crate::{println, trace};
 
 mod font;
 
 static FRAMEBUFFER_REQUEST: FramebufferRequest = FramebufferRequest::new();
 
-lazy_static! {
-    pub(crate) static ref DISPLAY: Mutex<Display> = Mutex::new(Display {
-        buffer: &mut [],
-        width: 0,
-        height: 0,
-        pitch: 0,
-        current_row: FONT_HEIGHT,
-        current_column: 0,
-    });
-}
+pub static DISPLAY: Mutex<Display> = Mutex::new(Display {
+    buffer: &mut [],
+    width: 0,
+    height: 0,
+    pitch: 0,
+    current_row: FONT_HEIGHT,
+    current_column: 0,
+});
 
 pub fn init() {
     let fb = FRAMEBUFFER_REQUEST

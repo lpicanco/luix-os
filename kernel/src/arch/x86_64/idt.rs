@@ -2,8 +2,8 @@ use core::arch::asm;
 use core::fmt;
 use core::mem::size_of;
 
-use crate::arch::{PrivilegeLevel, SegmentSelector};
 use crate::arch::x86_64::registers::read_cs;
+use crate::arch::{PrivilegeLevel, SegmentSelector};
 
 #[repr(C)]
 #[repr(align(16))]
@@ -86,7 +86,7 @@ impl Entry {
         let addr = handler as u64;
 
         Entry {
-            gdt_selector: read_cs(),
+            gdt_selector: read_cs().0,
             pointer_low: addr as u16,
             pointer_middle: (addr >> 16) as u16,
             pointer_high: (addr >> 32) as u32,
@@ -96,11 +96,11 @@ impl Entry {
     }
 }
 
-#[repr(C, packed)]
+#[repr(C)]
 #[derive(Copy, Clone, Debug)]
 pub struct Entry {
     pointer_low: u16,
-    gdt_selector: SegmentSelector,
+    gdt_selector: u16,
     options: EntryOptions,
     pointer_middle: u16,
     pointer_high: u32,
@@ -112,7 +112,7 @@ impl Entry {
         let options = 0;
         Entry {
             pointer_low: 0,
-            gdt_selector: SegmentSelector::new(0, PrivilegeLevel::Ring0),
+            gdt_selector: SegmentSelector::new(0, PrivilegeLevel::Ring0).0,
             pointer_middle: 0,
             pointer_high: 0,
             options: EntryOptions(options),
@@ -127,6 +127,7 @@ pub struct InterruptDescriptorTablePointer {
     pub base: u64,
 }
 
+#[repr(transparent)]
 #[derive(Debug, Clone, Copy)]
 pub struct EntryOptions(pub u16);
 
@@ -139,7 +140,7 @@ impl EntryOptions {
 
     pub(crate) fn new() -> Self {
         let mut options = Self::minimal();
-        options.set_present(true).disable_interrupts(true);
+        options.set_present(true);
         options
     }
 

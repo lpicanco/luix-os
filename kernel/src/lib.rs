@@ -16,6 +16,7 @@ pub fn init() {
 
     unsafe { asm!("cli") };
     acpi::init();
+    arch::apic::init();
     arch::interrupt::init();
 
     unsafe {

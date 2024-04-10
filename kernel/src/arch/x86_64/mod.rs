@@ -1,3 +1,4 @@
+pub(crate) mod apic;
 mod idt;
 pub(crate) mod interrupt;
 mod port;

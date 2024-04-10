@@ -1,19 +1,22 @@
-use rsdp::Rsdp;
 use spin::Once;
 
-use crate::acpi::madt::Madt;
-use crate::acpi::rsdt::{Rsdt, Signature};
-use crate::{println, trace};
+use rsdp::Rsdp;
 
-mod madt;
+use crate::{println, trace};
+use crate::acpi::madt::Madt;
+use crate::acpi::rsdt::Rsdt;
+use crate::acpi::sdt::Signature;
+
+mod acpi_from_lib;
+pub(crate) mod madt;
 mod rsdp;
 mod rsdt;
 mod sdt;
 
-static ACPI: Once<Acpi> = Once::new();
+pub static ACPI: Once<Acpi> = Once::new();
 
 #[derive(Debug)]
-struct Acpi {
+pub struct Acpi {
     pub madt: Madt,
 }
 

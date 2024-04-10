@@ -2,7 +2,7 @@ use core::mem::size_of;
 use core::{fmt, slice};
 
 use crate::acpi::rsdp::Rsdp;
-use crate::acpi::sdt::Sdt;
+use crate::acpi::sdt::{AcpiTable, Sdt, Signature};
 use crate::trace;
 
 /// Root System Description Table
@@ -10,7 +10,7 @@ use crate::trace;
 #[repr(C, packed)]
 pub struct Rsdt {
     header: Sdt,
-    pub tables: &'static [u32],
+    tables: &'static [u32],
 }
 
 impl Rsdt {
@@ -35,13 +35,13 @@ impl Rsdt {
         );
         rsp
     }
-    pub fn find_table<T>(&self, signature: Signature) -> Option<T> {
+    pub fn find_table<T: AcpiTable>(&self, signature: Signature) -> Option<T> {
         trace!("Searching for table: {}", signature);
 
         self.tables.iter().find_map(|&ptr| {
             let sdt = Sdt::load_from_address::<Sdt>(ptr);
             if sdt.signature == signature {
-                Some(Sdt::load_from_address::<T>(ptr))
+                Some(T::load_from_address::<T>(ptr))
             } else {
                 None
             }
@@ -52,18 +52,5 @@ impl fmt::Display for Rsdt {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "Rsdt\n{}", self.header)?;
         write!(f, "\ttables_count: {}\n", self.tables.len())
-    }
-}
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Signature([u8; 4]);
-
-impl Signature {
-    pub const MADT: Signature = Signature(*b"APIC");
-}
-
-impl fmt::Display for Signature {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", core::str::from_utf8(&self.0).unwrap())
     }
 }

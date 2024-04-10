@@ -1,6 +1,8 @@
 use core::{fmt, ptr, str};
 
-use crate::acpi::rsdt::Signature;
+pub trait AcpiTable {
+    fn load_from_address<T>(address: u32) -> Self;
+}
 
 /// System Description Table
 #[derive(Copy, Clone, Debug)]
@@ -43,5 +45,18 @@ impl fmt::Display for Sdt {
             "\tcreator_revision: {:#X}\n",
             self.creator_revision as u32
         )
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) struct Signature([u8; 4]);
+
+impl Signature {
+    pub const MADT: Signature = Signature(*b"APIC");
+}
+
+impl fmt::Display for Signature {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", str::from_utf8(&self.0).unwrap())
     }
 }

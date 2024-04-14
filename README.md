@@ -29,6 +29,10 @@ It is heavily inspired on Unix-like operating systems.
     - [x] IO APIC
 - [x] Interrupt handling with stack information
 - [ ] Memory management
+  - [x] Linked List Allocator
+  - [ ] Physical Memory Manager
+  - [ ] Virtual Memory Manager
+  - [ ] Paging
 - [ ] Global Descriptor Table
 - [ ] System Calls
 - [ ] Task Scheduler

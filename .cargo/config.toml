@@ -1,6 +1,6 @@
 [target.'cfg(target_os = "none")']
 rustflags = ["-C", "link-args=-Tkernel/linker.ld"]
-runner = "make run"
+runner = "make run-uefi"
 
 [build]
 target = "x86_64-unknown-none"

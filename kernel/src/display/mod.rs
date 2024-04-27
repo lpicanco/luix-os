@@ -48,8 +48,7 @@ pub fn init() {
             display.pitch
         );
     }
-
-    println!("Display resolution({}x{})", width, height);
+    println!("Display initialized. Resolution: {}x{}", width, height);
 }
 
 pub(crate) struct Display {

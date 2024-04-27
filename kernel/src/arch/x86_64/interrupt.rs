@@ -3,7 +3,7 @@ use spin::Once;
 
 use crate::arch::apic::io_apic::{Irq, IO_APIC};
 use crate::arch::apic::local_apic::{end_of_interrupt, LOCAL_APIC};
-use crate::arch::x86_64::idt;
+use crate::arch::x86_64::{idt, registers};
 use crate::arch::x86_64::idt::InterruptFrame;
 use crate::println;
 
@@ -33,7 +33,7 @@ pub(crate) fn init() {
         idt.set_double_fault_handler(double_fault_handler);
         idt.set_general_protection_fault_handler(double_fault_handler);
         idt.set_overflow_handler(double_fault_handler);
-        idt.set_page_fault_handler(double_fault_handler);
+        idt.set_page_fault_handler(page_fault_handler);
 
         idt.set_handler(InterruptVector::Timer as usize, timer_interrupt_handler);
         idt.set_handler(
@@ -58,6 +58,16 @@ extern "x86-interrupt" fn divide_by_zero_handler(interrupt_frame: InterruptFrame
 
 extern "x86-interrupt" fn double_fault_handler(interrupt_frame: InterruptFrame) {
     println!("Error: Double fault.\n{}", interrupt_frame);
+
+    loop {
+        unsafe {
+            asm!("hlt");
+        }
+    }
+}
+
+extern "x86-interrupt" fn page_fault_handler(interrupt_frame: InterruptFrame) {
+    println!("Error: Page fault at {}\n{}", registers::read_cr2(), interrupt_frame);
 
     loop {
         unsafe {

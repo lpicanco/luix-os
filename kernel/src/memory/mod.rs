@@ -4,6 +4,8 @@ use limine::request::{HhdmRequest, MemoryMapRequest};
 use crate::{println, trace};
 
 mod allocator;
+pub mod address;
+pub mod frame;
 
 static MEMORY_MAP_REQUEST: MemoryMapRequest = MemoryMapRequest::new();
 static HHDM_REQUEST: HhdmRequest = HhdmRequest::new();

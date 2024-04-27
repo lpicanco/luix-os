@@ -1,8 +1,9 @@
 pub(crate) mod apic;
 mod idt;
 pub(crate) mod interrupt;
+pub(crate) mod memory;
 mod port;
-mod registers;
+pub(crate) mod registers;
 mod serial_writer;
 
 #[repr(C, packed)]

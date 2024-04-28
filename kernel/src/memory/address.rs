@@ -2,7 +2,7 @@ use core::fmt;
 use core::ops::Add;
 
 /// A physical memory address.
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct PhysicalAddress(u64);
 
 impl PhysicalAddress {
@@ -34,7 +34,7 @@ impl fmt::Display for PhysicalAddress {
 }
 
 /// A virtual memory address.
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct VirtualAddress(u64);
 
 impl VirtualAddress {
@@ -101,5 +101,32 @@ impl Add<u64> for VirtualAddress {
 impl fmt::Display for VirtualAddress {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:#X}", self.0)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test_case]
+    fn test_virtual_address() {
+        let addr = VirtualAddress::new(0xDEAD_BEEF);
+        assert_eq!(addr.as_u64(), 0xDEAD_BEEF);
+        assert_eq!(addr.page_offset(), 0xEEF);
+        assert_eq!(addr.p1_index(), 0xDB);
+        assert_eq!(addr.p2_index(), 0xF5);
+        assert_eq!(addr.p3_index(), 0x3);
+        assert_eq!(addr.p4_index(), 0x0);
+        assert_eq!(addr.align_down(0x1000).as_u64(), 0xDEAD_B000);
+        assert_eq!(addr + 0x1, VirtualAddress::new(0xDEAD_BEF0));
+        assert_eq!(addr + 0x32, VirtualAddress::new(0xDEAD_BF21));
+    }
+
+    #[test_case]
+    fn test_physical_address() {
+        let addr = PhysicalAddress::new(0xDEAD_BEEF);
+        assert_eq!(addr.as_u64(), 0xDEAD_BEEF);
+        assert_eq!(addr.align_down(0x1000).as_u64(), 0xDEAD_B000);
+        assert_eq!(addr + 0x1, PhysicalAddress::new(0xDEAD_BEF0));
+        assert_eq!(addr + 0x32, PhysicalAddress::new(0xDEAD_BF21));
     }
 }

@@ -2,7 +2,7 @@ pub(crate) mod apic;
 mod idt;
 pub(crate) mod interrupt;
 pub(crate) mod memory;
-mod port;
+pub(crate) mod port;
 pub(crate) mod registers;
 mod serial_writer;
 

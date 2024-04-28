@@ -33,6 +33,8 @@ It is heavily inspired on Unix-like operating systems.
   - [ ] Paging
     - [x] Address Translation
   - [ ] Physical Memory Manager
+    - [x] Memory Allocation
+    - [ ] Memory Deallocation
   - [ ] Virtual Memory Manager
 - [ ] Global Descriptor Table
 - [ ] System Calls

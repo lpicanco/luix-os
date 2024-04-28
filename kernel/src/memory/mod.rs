@@ -1,14 +1,18 @@
 use limine::memory_map::{Entry, EntryType};
 use limine::request::{HhdmRequest, MemoryMapRequest};
+use spin::Once;
 
+use crate::arch::memory::mapper::MemoryMapper;
+use crate::memory::address::VirtualAddress;
 use crate::{println, trace};
 
-mod allocator;
 pub mod address;
+pub mod allocator;
 pub mod frame;
 
 static MEMORY_MAP_REQUEST: MemoryMapRequest = MemoryMapRequest::new();
 static HHDM_REQUEST: HhdmRequest = HhdmRequest::new();
+pub static MEMORY_MAPPER: Once<MemoryMapper> = Once::new();
 
 pub fn init() {
     let pm_offset = HHDM_REQUEST
@@ -21,6 +25,7 @@ pub fn init() {
         .get_response()
         .expect("Failed to get memory map");
 
+    MEMORY_MAPPER.call_once(|| MemoryMapper::new(VirtualAddress::new(pm_offset)));
     allocator::init(memory_map.entries());
 
     println!(

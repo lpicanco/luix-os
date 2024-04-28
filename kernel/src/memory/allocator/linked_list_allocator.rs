@@ -1,9 +1,7 @@
 use core::alloc::{GlobalAlloc, Layout};
 use core::mem;
 
-use limine::memory_map::Entry;
-
-use crate::memory::allocator::{align_up, find_max_usable_memory, MutexWrapper};
+use crate::memory::allocator::{align_up, MutexWrapper};
 use crate::trace;
 
 pub struct LinkedListAllocator {
@@ -17,8 +15,7 @@ impl LinkedListAllocator {
         }
     }
 
-    pub unsafe fn init(&mut self, entries: &[&Entry], heap_size: usize) {
-        let heap_start = find_max_usable_memory(entries, heap_size);
+    pub unsafe fn init(&mut self, heap_start: usize, heap_size: usize) {
         self.add_free_region(heap_start, heap_size)
     }
 

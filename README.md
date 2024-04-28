@@ -32,10 +32,12 @@ It is heavily inspired on Unix-like operating systems.
   - [x] Linked List Allocator
   - [ ] Paging
     - [x] Address Translation
+    - [x] Page mapping
+    - [ ] Address space switching
   - [ ] Physical Memory Manager
     - [x] Memory Allocation
     - [ ] Memory Deallocation
-  - [ ] Virtual Memory Manager
+  - [x] Virtual Memory Manager
 - [ ] Global Descriptor Table
 - [ ] System Calls
 - [ ] Task Scheduler

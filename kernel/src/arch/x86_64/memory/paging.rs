@@ -103,6 +103,10 @@ impl PageTableEntry {
         self.entry == 0
     }
 
+    pub fn set_unused(&mut self) {
+        self.entry = 0;
+    }
+
     pub fn present(&self) -> bool {
         (self.entry >> 0) & 1 == 1
     }

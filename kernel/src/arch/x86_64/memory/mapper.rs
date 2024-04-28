@@ -112,6 +112,40 @@ impl MemoryMapper {
         }
     }
 
+    pub fn unmap_page(&self, page: Page) {
+        let mut frame = PhysicalFrame::containing_address(read_cr3());
+
+        let table_indexes = [
+            page.p4_index(),
+            page.p3_index(),
+            page.p2_index(),
+            page.p1_index(),
+        ];
+
+        let mut page_table_entry: Option<&mut PageTableEntry> = None;
+
+        for (i, &index) in table_indexes.iter().enumerate() {
+            let page_table_virt = self.physical_memory_offset + frame.start_address.as_u64();
+
+            let page_table_ptr: *mut PageTable = page_table_virt.as_mut_ptr();
+            let page_table = unsafe { &mut *page_table_ptr };
+            page_table_entry = Some(&mut page_table[index as usize]);
+
+            if page_table_entry.as_ref().is_some_and(|pte| pte.huge_page()) {
+                break;
+            }
+
+            frame = match page_table_entry.as_ref().unwrap().frame() {
+                Some(frame) => frame,
+                None => return,
+            };
+        }
+
+        if let Some(page_table_entry) = page_table_entry {
+            page_table_entry.set_unused()
+        }
+    }
+
     fn map_page_entry(
         &self,
         page_table_entry: &mut PageTableEntry,
@@ -161,11 +195,44 @@ mod tests {
         let mut frame_allocator = FRAME_ALLOCATOR.lock();
         let mapper = unsafe { MEMORY_MAPPER.get_unchecked() };
 
+        // check that the page is not mapped
         let virt = VirtualAddress::new(0xFEED_DEAD_1000);
         let phys = mapper.translate_addr(virt);
         assert_eq!(phys, None);
 
+        // map the page
         let page = Page::containing_address(virt);
+        let frame = frame_allocator.allocate_frame().unwrap();
+        mapper.map_page(page, frame.clone(), &mut frame_allocator, false, false);
+
+        // check that the page is mapped
+        let phys = mapper.translate_addr(virt);
+        assert_eq!(phys, Some(frame.start_address));
+    }
+
+    #[test_case]
+    fn test_unmap_page() {
+        let mut frame_allocator = FRAME_ALLOCATOR.lock();
+        let mapper = unsafe { MEMORY_MAPPER.get_unchecked() };
+
+        // map the page
+        let virt = VirtualAddress::new(0xFEED_DEAD_2000);
+        let page = Page::containing_address(virt);
+        let frame = frame_allocator.allocate_frame().unwrap();
+        mapper.map_page(page, frame.clone(), &mut frame_allocator, false, false);
+
+        // check that the page is mapped
+        let phys = mapper.translate_addr(virt);
+        assert_eq!(phys, Some(frame.start_address));
+
+        // unmap the page
+        mapper.unmap_page(page);
+
+        // check that the page is not mapped
+        let phys = mapper.translate_addr(virt);
+        assert_eq!(phys, None);
+
+        // check that the page can be remapped
         let frame = frame_allocator.allocate_frame().unwrap();
         mapper.map_page(page, frame.clone(), &mut frame_allocator, false, false);
         let phys = mapper.translate_addr(virt);

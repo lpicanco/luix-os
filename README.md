@@ -33,10 +33,11 @@ It is heavily inspired on Unix-like operating systems.
   - [ ] Paging
     - [x] Address Translation
     - [x] Page mapping
+    - [x] Page unmapping
     - [ ] Address space switching
-  - [ ] Physical Memory Manager
+  - [x] Physical Memory Manager
     - [x] Memory Allocation
-    - [ ] Memory Deallocation
+    - [x] Memory Deallocation
   - [x] Virtual Memory Manager
 - [ ] Global Descriptor Table
 - [ ] System Calls

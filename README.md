@@ -39,6 +39,12 @@ It is heavily inspired on Unix-like operating systems.
     - [x] Memory Allocation
     - [x] Memory Deallocation
   - [x] Virtual Memory Manager
+- [ ] Drivers
+  - [x] Keyboard
+  - [x] Timer
+  - [x] PCI
+  - [ ] Storage
+    - [ ] NVMe 
 - [ ] Global Descriptor Table
 - [ ] System Calls
 - [ ] Task Scheduler

@@ -10,8 +10,12 @@ impl PhysicalAddress {
         PhysicalAddress(self.0 & !(align - 1))
     }
 
-    pub fn new(addr: u64) -> Self {
+    pub const fn new(addr: u64) -> Self {
         Self(addr)
+    }
+
+    pub(crate) fn as_mut_ptr<T>(&self) -> *mut T {
+        self.0 as *mut T
     }
 
     pub fn as_u64(&self) -> u64 {

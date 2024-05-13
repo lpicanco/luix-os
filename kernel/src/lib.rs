@@ -3,6 +3,11 @@
 #![feature(abi_x86_interrupt)]
 #![feature(const_mut_refs)]
 #![feature(custom_test_frameworks)]
+#![feature(assert_matches)]
+#![feature(allocator_api)]
+#![feature(new_uninit)]
+#![feature(strict_provenance)]
+#![feature(maybe_uninit_as_bytes)]
 #![test_runner(crate::test_runner)]
 #![reexport_test_harness_main = "test_main"]
 
@@ -14,9 +19,11 @@ use core::panic::PanicInfo;
 mod acpi;
 mod arch;
 mod display;
+mod drivers;
 mod memory;
 pub mod print;
 mod serial;
+pub(crate) mod bits;
 
 pub fn init() {
     display::init();
@@ -31,6 +38,8 @@ pub fn init() {
     unsafe {
         asm!("sti");
     };
+
+    drivers::init();
 }
 #[panic_handler]
 #[cfg(not(test))]

@@ -21,11 +21,11 @@ run: luix-os
 
 .PHONY: run-uefi
 run-uefi: $(OMVF_DIR) luix-os
-	qemu-system-x86_64 -M q35 -m 128M -bios $(OMVF_DIR)/OVMF.fd -hda $(IMAGE_NAME) -serial stdio -smp 1
+	qemu-system-x86_64 -M q35 -m 128M -bios $(OMVF_DIR)/OVMF.fd -drive id=disk,file=$(IMAGE_NAME),format=raw,if=none -device nvme,drive=disk,serial=feedcafe -serial stdio -smp 1
 
 .PHONY: run-uefi-test
 run-uefi-test: $(OMVF_DIR) luix-os-test
-	qemu-system-x86_64 -M q35 -m 128M -bios $(OMVF_DIR)/OVMF.fd -hda $(IMAGE_NAME) -serial stdio -smp 1  -device isa-debug-exit,iobase=0xf4,iosize=0x04 -display none || [ $$? -eq 33 ]
+	qemu-system-x86_64 -M q35 -m 128M -bios $(OMVF_DIR)/OVMF.fd -drive id=disk,file=$(IMAGE_NAME),format=raw,if=none -device nvme,drive=disk,serial=feedcafe -serial stdio -smp 1  -device isa-debug-exit,iobase=0xf4,iosize=0x04 -display none || [ $$? -eq 33 ]
 
 $(OMVF_DIR):
 	mkdir -p $(OMVF_DIR)
@@ -42,7 +42,7 @@ kernel:
 
 .PHONY: kernel-test
 kernel-test:
-	@rm target/$(TARGET)/debug/deps/kernel-*
+	@rm -f target/$(TARGET)/debug/deps/kernel-*
 	cargo test --target $(TARGET) --profile $(PROFILE) --package kernel --lib --no-run
 	@cp target/$(TARGET)/debug/deps/$$(cd target/x86_64-unknown-none/debug/deps && find kernel-* -maxdepth 1 -perm -111 -type f) target/x86_64-unknown-none/debug/kernel-test
 
@@ -60,8 +60,8 @@ luix-os: $(LIMINE_TARGET) kernel
 
 luix-os-test: $(LIMINE_TARGET) kernel-test
 	rm -f $(IMAGE_NAME)
-	dd if=/dev/zero bs=1M count=0 seek=64 of=$(IMAGE_NAME)
-	sgdisk $(IMAGE_NAME) -n 1:2048 -t 1:ef00
+	dd if=/dev/zero bs=1M count=0 seek=42 of=$(IMAGE_NAME)
+	sgdisk $(IMAGE_NAME) -n 1:2048 -t 1:ef00 -c 1:luix-os-test
 	./target/limine/limine bios-install $(IMAGE_NAME)
 	mformat -i $(IMAGE_NAME)@@1M
 	mmd -i $(IMAGE_NAME)@@1M ::/EFI ::/EFI/BOOT ::/boot ::/boot/limine

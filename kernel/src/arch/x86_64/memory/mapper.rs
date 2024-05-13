@@ -85,11 +85,11 @@ impl MemoryMapper {
             match page_table_entry.frame() {
                 Some(entry_frame) => {
                     // At L1, the page should not be mapped
-                    if i == 3 {
+                    if i == 3 && !page_table_entry.is_unused() {
                         // TODO: Handle unused frames
                         panic!(
-                            "Page already mapped to frame: {}",
-                            entry_frame.start_address
+                            "Page already mapped to frame: {}. Entry: {}",
+                            entry_frame.start_address, page_table_entry
                         );
                     }
                     current_frame = entry_frame;
@@ -124,7 +124,7 @@ impl MemoryMapper {
 
         let mut page_table_entry: Option<&mut PageTableEntry> = None;
 
-        for (i, &index) in table_indexes.iter().enumerate() {
+        for &index in &table_indexes {
             let page_table_virt = self.physical_memory_offset + frame.start_address.as_u64();
 
             let page_table_ptr: *mut PageTable = page_table_virt.as_mut_ptr();

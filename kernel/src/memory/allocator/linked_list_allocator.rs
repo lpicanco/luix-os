@@ -2,7 +2,6 @@ use core::alloc::{GlobalAlloc, Layout};
 use core::mem;
 
 use crate::memory::allocator::{align_up, MutexWrapper};
-use crate::trace;
 
 pub struct LinkedListAllocator {
     head: Block,
@@ -86,7 +85,6 @@ unsafe impl GlobalAlloc for MutexWrapper<LinkedListAllocator> {
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
         self.lock().dealloc_block(ptr as usize, layout);
-        trace!("Memory deallocated.")
     }
 }
 

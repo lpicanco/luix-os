@@ -7,6 +7,7 @@ use crate::memory::allocator::frame_allocator::FrameAllocator;
 use crate::memory::allocator::linked_list_allocator::LinkedListAllocator;
 use crate::memory::MEMORY_MAPPER;
 
+pub mod dma_allocator;
 pub mod frame_allocator;
 mod linked_list_allocator;
 

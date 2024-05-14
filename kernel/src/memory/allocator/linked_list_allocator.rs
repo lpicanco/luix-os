@@ -28,7 +28,7 @@ impl LinkedListAllocator {
         self.head.next = Some(&mut *node_ptr);
     }
 
-    unsafe fn alloc_block(&mut self, layout: Layout) -> Option<usize> {
+    pub unsafe fn alloc_block(&mut self, layout: Layout) -> Option<usize> {
         // Resize layout to be at least the size of a block
         let (size, align) = self.align_with_block_size(layout);
 
@@ -59,7 +59,7 @@ impl LinkedListAllocator {
         None
     }
 
-    unsafe fn dealloc_block(&mut self, ptr: usize, layout: Layout) {
+    pub unsafe fn dealloc_block(&mut self, ptr: usize, layout: Layout) {
         // Resize layout to be at least the size of a block
         let (size, _) = self.align_with_block_size(layout);
         self.add_free_region(ptr, size);

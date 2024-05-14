@@ -41,3 +41,19 @@ fn calculate_available_memory(entries: &[&Entry]) -> usize {
         .map(|entry| entry.length as usize)
         .sum()
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::memory::allocator::FRAME_ALLOCATOR;
+    use crate::memory::MEMORY_MAPPER;
+
+    #[test_case]
+    fn test_frame_allocator_initialized() {
+        assert_ne!(FRAME_ALLOCATOR.lock().memory_map.len(), 0);
+    }
+
+    #[test_case]
+    fn test_memory_mapper_initialized() {
+        assert!(MEMORY_MAPPER.is_completed());
+    }
+}

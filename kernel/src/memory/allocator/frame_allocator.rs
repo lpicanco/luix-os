@@ -1,6 +1,7 @@
+use limine::memory_map::{Entry, EntryType};
+
 use crate::memory::address::PhysicalAddress;
 use crate::memory::frame::{PhysicalFrame, FRAME_SIZE};
-use limine::memory_map::{Entry, EntryType};
 
 pub struct FrameAllocator {
     // TODO: Keep the iterator instead of the memory map
@@ -17,8 +18,12 @@ impl FrameAllocator {
     }
 
     pub fn allocate_frame(&mut self) -> Option<PhysicalFrame> {
+        self.allocate_frames(FRAME_SIZE)
+    }
+
+    pub fn allocate_frames(&mut self, size: usize) -> Option<PhysicalFrame> {
         let frame = self.usable_frames().nth(self.next);
-        self.next += 1;
+        self.next += size.div_ceil(FRAME_SIZE);
         frame
     }
 

@@ -19,6 +19,12 @@ impl LinkedListAllocator {
     }
 
     unsafe fn add_free_region(&mut self, addr: usize, size: usize) {
+        assert!(
+            size >= mem::size_of::<Block>(),
+            "Size should be at least the size of a block. Size: {}",
+            size
+        );
+
         let mut node = Block::new(size);
         node.next = self.head.next.take();
 
@@ -49,7 +55,7 @@ impl LinkedListAllocator {
 
             // If there is any remaining space in the block, add it to the list
             let new_block_size = block_end_addr - end_addr;
-            if new_block_size > 0 {
+            if new_block_size >= mem::size_of::<Block>() {
                 self.add_free_region(end_addr, new_block_size);
             }
 

@@ -1,7 +1,9 @@
 # Luix Operating System
 
-Luix is a simple operating system that I am developing in Rust for learning purposes.
-It is heavily inspired on Unix-like operating systems.
+Luix is a hobby operating system being developed in Rust. 
+
+It is a 64-bit operating system that supports both x86-64 and AArch64 architectures, and it is heavily inspired by POSIX systems.
+
 
 ## Features
 
@@ -43,8 +45,8 @@ It is heavily inspired on Unix-like operating systems.
   - [x] Keyboard
   - [x] Timer
   - [x] PCI
-  - [ ] Storage
-    - [ ] NVMe 
+  - [x] Storage
+    - [x] NVMe 
 - [ ] Global Descriptor Table
 - [ ] System Calls
 - [ ] Task Scheduler

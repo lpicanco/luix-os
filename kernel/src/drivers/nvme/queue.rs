@@ -1,12 +1,10 @@
-use core::fmt;
 use core::sync::atomic::{AtomicU16, Ordering};
+use core::{fmt, hint};
 
-use crate::arch::instructions;
 use crate::bits::Bits;
 use crate::drivers::nvme::command::NvmeCommand;
 use crate::memory::address::PhysicalAddress;
 use crate::memory::allocator::dma_allocator::Dma;
-use crate::trace;
 
 static QUEUE_GROUP_ID: AtomicU16 = AtomicU16::new(0);
 
@@ -65,6 +63,7 @@ struct Queue<T: QueueType> {
     tail: usize,
     commands: Dma<[T::Type]>,
     door_bell_address: usize,
+    phase: bool,
 }
 
 impl<T: QueueType> Queue<T> {
@@ -76,6 +75,7 @@ impl<T: QueueType> Queue<T> {
             tail: 0,
             commands: Dma::new_zeroed_slice(queue_size).assume_init(),
             door_bell_address,
+            phase: true,
         }
     }
 
@@ -96,17 +96,15 @@ impl Queue<Submission> {
 
 impl Queue<Completion> {
     pub fn wait_for_completion(&mut self) {
-        let completion_ptr = &self.commands[self.tail];
-
-        // TODO: Handle the phase bit
-        trace!("wait_for_completion: {:?}", completion_ptr);
-
-        while completion_ptr.status() != 0 {
-            trace!("wait_for_completion: {:?}", completion_ptr);
-            instructions::halt();
+        while self.commands[self.tail].phase() != self.phase {
+            hint::spin_loop();
         }
 
         self.tail = (self.tail + 1) % self.commands.len();
+        if self.tail == 0 {
+            self.phase = !self.phase;
+        }
+
         self.ring_doorbell();
     }
 }

@@ -13,6 +13,13 @@ mod capabilities;
 
 pub static PCI_DRIVER: Once<PciDriver> = Once::new();
 
+#[macro_export]
+macro_rules! pci_device {
+    () => {
+        PCI_DRIVER.get().unwrap()
+    };
+}
+
 pub(crate) fn init() {
     let mut driver = PciDriver {
         scanner: PciScanner::new(),
@@ -37,12 +44,11 @@ impl PciDriver {
         &self.scanner.devices
     }
 
-    pub fn storage_devices(&self) -> Vec<&PciDevice> {
+    pub fn storage_devices(&self) -> impl Iterator<Item = &PciDevice> {
         self.scanner
             .devices
             .iter()
             .filter(|device| device.class_code == Self::DEVICE_CLASS_STORAGE)
-            .collect()
     }
 }
 
@@ -121,7 +127,7 @@ impl PciDevice {
 
 impl fmt::Display for PciDevice {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "DeviceId: {:02x}:{:02x}.{:x} Vendor: {:04x} Device: {:04x} Class: {:02x} Sub class: {:02x}",
+        write!(f, "device: {:02x}:{:02x}.{:x} vendor: {:04x} deviceId: {:04x} Class: {:02x} Sub class: {:02x}",
                self.bus, self.device, self.function, self.vendor_id, self.device_id, self.class_code, self.subclass)
     }
 }
@@ -223,13 +229,12 @@ mod tests {
 
     #[test_case]
     fn test_pci_driver() {
-        let driver = PCI_DRIVER.get().unwrap();
+        let driver = pci_device!();
         assert_ne!(driver.devices().len(), 0);
-        assert_ne!(driver.storage_devices().len(), 0);
+        assert_ne!(driver.storage_devices().count(), 0);
         assert_matches!(
             driver
                 .storage_devices()
-                .iter()
                 .find(|device| device.class_code == 0x01),
             Some(_)
         );

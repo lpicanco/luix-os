@@ -5,6 +5,7 @@ pub(crate) mod memory;
 pub(crate) mod port;
 pub(crate) mod registers;
 mod serial_writer;
+pub(crate) mod instructions;
 
 #[repr(C, packed)]
 #[derive(Copy, PartialEq, Eq, Clone, PartialOrd, Ord, Hash, Debug)]

@@ -1,13 +1,13 @@
 use alloc::boxed::Box;
-use core::alloc::{Allocator, AllocError, Layout};
+use core::alloc::{AllocError, Allocator, Layout};
 use core::mem::MaybeUninit;
 use core::ops::{Deref, DerefMut};
 use core::ptr;
 use core::ptr::NonNull;
 
-use crate::memory::address::{PhysicalAddress, VirtualAddress};
-use crate::memory::allocator::{FRAME_ALLOCATOR, MutexWrapper};
-use crate::memory::allocator::linked_list_allocator::LinkedListAllocator;
+use crate::allocate_frame;
+use crate::memory::address::PhysicalAddress;
+use crate::memory::allocator::FRAME_ALLOCATOR;
 use crate::memory::MEMORY_MAPPER;
 
 #[derive(Debug)]
@@ -37,10 +37,6 @@ impl<T: ?Sized> Dma<T> {
         let phys = ptr::addr_of!(*self.0).addr() as u64;
         PhysicalAddress::new(phys - MEMORY_MAPPER.get().unwrap().physical_memory_offset.as_u64())
     }
-
-    pub fn as_mut_ptr(&mut self) -> *mut T {
-        self.0.as_mut() as *mut T
-    }
 }
 
 impl<T: ?Sized> Deref for Dma<T> {
@@ -63,38 +59,11 @@ impl<T> Dma<[MaybeUninit<T>]> {
     }
 }
 
-static DMA_ALLOCATOR: MutexWrapper<LinkedListAllocator> =
-    MutexWrapper::new(LinkedListAllocator::new());
 pub struct DmaAllocator;
-
-impl DmaAllocator {
-    fn allocate_from_pool(&self, layout: Layout) -> Option<VirtualAddress> {
-        unsafe {
-            DMA_ALLOCATOR
-                .lock()
-                .alloc_block(layout)
-                .map(|addr| VirtualAddress::new(addr as u64))
-        }
-    }
-
-    fn allocate_from_frame_allocator(&self, layout: Layout) -> VirtualAddress {
-        let frame_address = FRAME_ALLOCATOR
-            .lock()
-            .allocate_frames(layout.size())
-            .unwrap()
-            .start_address
-            .as_u64();
-
-        MEMORY_MAPPER.get().unwrap().physical_memory_offset + frame_address
-    }
-}
-
 unsafe impl Allocator for DmaAllocator {
     fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
-        let virt_address = match self.allocate_from_pool(layout) {
-            Some(addr) => addr,
-            None => self.allocate_from_frame_allocator(layout),
-        };
+        let frame_address = allocate_frame!(layout.size()).start_address.as_u64();
+        let virt_address = MEMORY_MAPPER.get().unwrap().physical_memory_offset + frame_address;
 
         let ptr = unsafe { NonNull::new_unchecked(virt_address.as_mut_ptr()) };
         let size = layout.size();
@@ -102,9 +71,14 @@ unsafe impl Allocator for DmaAllocator {
     }
 
     unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
-        DMA_ALLOCATOR
+        let phys_addr = PhysicalAddress::new(
+            ptr.as_ptr() as u64 - MEMORY_MAPPER.get().unwrap().physical_memory_offset.as_u64(),
+        );
+        FRAME_ALLOCATOR
+            .get()
+            .unwrap()
             .lock()
-            .dealloc_block(ptr.as_ptr() as usize, layout);
+            .deallocate_frames(phys_addr, layout.size());
     }
 }
 
@@ -134,6 +108,17 @@ mod tests {
     }
 
     #[test_case]
+    fn test_dma_dealloc_heavy() {
+        let block = Dma::<[u8; 0x101_000]>::zeroed();
+        let addr = block.addr();
+        drop(block);
+
+        let block = Dma::<[u8; 0x100_000]>::zeroed();
+        let block2 = Dma::<[u8; 0x1000]>::zeroed();
+        assert_eq!(addr.as_u64(), block2.addr().as_u64());
+    }
+
+    #[test_case]
     fn test_dma_allocator_zeroed_slice() {
         let block = Dma::<Block>::new_zeroed_slice(5).assume_init();
         assert_eq!(block[0].field1, 0);
@@ -150,14 +135,15 @@ mod tests {
         };
 
         {
-            // after deallocation, allocate a blocks of 8 elements again
-            let block = Dma::<Block>::new_zeroed_slice(8).assume_init();
+            // after deallocation, allocate a blocks of 5 and 3 elements
+            let block = Dma::<Block>::new_zeroed_slice(5).assume_init();
+            let block2 = Dma::<Block>::new_zeroed_slice(3).assume_init();
             // check if the address is the same as the first allocation
-            assert_eq!(addr, block.addr());
+            assert_eq!(addr, block2.addr());
         }
 
-        // after deallocation, allocate one block of 5 elements
-        let block = Dma::<Block>::new_zeroed_slice(5).assume_init();
+        // after deallocation, allocate one block of 8 elements again
+        let block = Dma::<Block>::new_zeroed_slice(8).assume_init();
         // check if the address is the same as the first allocation
         assert_eq!(addr, block.addr());
     }

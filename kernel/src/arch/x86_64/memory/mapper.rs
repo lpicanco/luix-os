@@ -1,7 +1,7 @@
+use crate::allocate_frame;
 use crate::arch::memory::paging::{Page, PageTable, PageTableEntry};
 use crate::arch::registers::read_cr3;
 use crate::memory::address::{PhysicalAddress, VirtualAddress};
-use crate::memory::allocator::frame_allocator::FrameAllocator;
 use crate::memory::frame::PhysicalFrame;
 
 pub struct MemoryMapper {
@@ -62,7 +62,6 @@ impl MemoryMapper {
         &self,
         page: Page,
         frame: PhysicalFrame,
-        frame_allocator: &mut FrameAllocator,
         user_accessible: bool,
         writable: bool,
     ) {
@@ -99,7 +98,7 @@ impl MemoryMapper {
                     if i == 3 {
                         current_frame = frame.clone();
                     } else {
-                        current_frame = frame_allocator.allocate_frame().expect("Out of memory");
+                        current_frame = allocate_frame!();
                     }
                 }
             };
@@ -166,7 +165,6 @@ impl MemoryMapper {
 
 #[cfg(test)]
 mod tests {
-    use crate::memory::allocator::FRAME_ALLOCATOR;
     use crate::memory::MEMORY_MAPPER;
 
     use super::*;
@@ -192,7 +190,6 @@ mod tests {
 
     #[test_case]
     fn test_map_page() {
-        let mut frame_allocator = FRAME_ALLOCATOR.lock();
         let mapper = unsafe { MEMORY_MAPPER.get_unchecked() };
 
         // check that the page is not mapped
@@ -202,8 +199,8 @@ mod tests {
 
         // map the page
         let page = Page::containing_address(virt);
-        let frame = frame_allocator.allocate_frame().unwrap();
-        mapper.map_page(page, frame.clone(), &mut frame_allocator, false, false);
+        let frame = allocate_frame!();
+        mapper.map_page(page, frame.clone(), false, false);
 
         // check that the page is mapped
         let phys = mapper.translate_addr(virt);
@@ -212,14 +209,13 @@ mod tests {
 
     #[test_case]
     fn test_unmap_page() {
-        let mut frame_allocator = FRAME_ALLOCATOR.lock();
         let mapper = unsafe { MEMORY_MAPPER.get_unchecked() };
 
         // map the page
         let virt = VirtualAddress::new(0xFEED_DEAD_2000);
         let page = Page::containing_address(virt);
-        let frame = frame_allocator.allocate_frame().unwrap();
-        mapper.map_page(page, frame.clone(), &mut frame_allocator, false, false);
+        let frame = allocate_frame!();
+        mapper.map_page(page, frame.clone(), false, false);
 
         // check that the page is mapped
         let phys = mapper.translate_addr(virt);
@@ -233,8 +229,8 @@ mod tests {
         assert_eq!(phys, None);
 
         // check that the page can be remapped
-        let frame = frame_allocator.allocate_frame().unwrap();
-        mapper.map_page(page, frame.clone(), &mut frame_allocator, false, false);
+        let frame = allocate_frame!();
+        mapper.map_page(page, frame.clone(), false, false);
         let phys = mapper.translate_addr(virt);
         assert_eq!(phys, Some(frame.start_address));
     }

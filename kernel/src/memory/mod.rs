@@ -49,7 +49,7 @@ mod tests {
 
     #[test_case]
     fn test_frame_allocator_initialized() {
-        assert_ne!(FRAME_ALLOCATOR.lock().memory_map.len(), 0);
+        assert!(FRAME_ALLOCATOR.is_completed());
     }
 
     #[test_case]

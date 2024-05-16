@@ -1,4 +1,5 @@
 use limine::memory_map::Entry;
+use spin::once::Once;
 use spin::Mutex;
 
 use crate::arch::memory::paging::Page;
@@ -17,32 +18,42 @@ const HEAP_SIZE: usize = 1024 * 1024 * 2; // 2MB
 #[global_allocator]
 static ALLOCATOR: MutexWrapper<LinkedListAllocator> = MutexWrapper::new(LinkedListAllocator::new());
 
-pub static FRAME_ALLOCATOR: Mutex<FrameAllocator> = Mutex::new(FrameAllocator {
-    memory_map: &[],
-    next: 0,
-});
+pub static FRAME_ALLOCATOR: Once<Mutex<FrameAllocator>> = Once::new();
+
+#[macro_export]
+macro_rules! allocate_frame {
+    () => {
+        crate::memory::allocator::FRAME_ALLOCATOR
+            .get()
+            .unwrap()
+            .lock()
+            .allocate_frame()
+            .expect("Out of memory")
+    };
+    ($size:expr) => {
+        crate::memory::allocator::FRAME_ALLOCATOR
+            .get()
+            .unwrap()
+            .lock()
+            .allocate_frames($size)
+            .expect("Out of memory")
+    };
+}
 
 pub fn init(entries: &'static [&'static Entry]) {
     unsafe {
-        FRAME_ALLOCATOR.lock().memory_map = entries;
+        FRAME_ALLOCATOR.call_once(|| Mutex::new(FrameAllocator::new(entries)));
 
         let heap_page_start = Page::containing_address(VirtualAddress::new(HEAP_START as u64));
         let heap_page_end =
             Page::containing_address(VirtualAddress::new((HEAP_START + HEAP_SIZE - 1) as u64));
         let heap_pages = Page::range_inclusive(heap_page_start, heap_page_end);
 
-        {
-            let mut frame_allocator = FRAME_ALLOCATOR.lock();
-            for page in heap_pages {
-                let frame = frame_allocator.allocate_frame();
-                MEMORY_MAPPER.get_unchecked().map_page(
-                    page,
-                    frame.unwrap(),
-                    &mut frame_allocator,
-                    false,
-                    true,
-                )
-            }
+        for page in heap_pages {
+            let frame = allocate_frame!();
+            MEMORY_MAPPER
+                .get_unchecked()
+                .map_page(page, frame, false, true)
         }
 
         ALLOCATOR.lock().init(HEAP_START, HEAP_SIZE);

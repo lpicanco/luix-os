@@ -1,12 +1,9 @@
-use core::sync::atomic::{AtomicU16, Ordering};
 use core::{fmt, hint};
 
 use crate::bits::Bits;
 use crate::drivers::nvme::command::NvmeCommand;
 use crate::memory::address::PhysicalAddress;
 use crate::memory::allocator::dma_allocator::Dma;
-
-static QUEUE_GROUP_ID: AtomicU16 = AtomicU16::new(0);
 
 /// A group of queues that are used to submit and complete commands.
 struct Submission;
@@ -19,9 +16,7 @@ pub struct QueueGroup {
 }
 
 impl QueueGroup {
-    pub fn new(queue_size: usize, base_address: usize) -> Self {
-        let queue_group_id = QUEUE_GROUP_ID.fetch_add(1, Ordering::SeqCst);
-
+    pub fn new(queue_group_id: u16, queue_size: usize, base_address: usize) -> Self {
         Self {
             submission: Queue::new(queue_group_id, queue_size, base_address),
             completion: Queue::new(queue_group_id, queue_size, base_address),
@@ -81,13 +76,14 @@ impl<T: QueueType> Queue<T> {
 
     fn ring_doorbell(&mut self) {
         let door_bell = self.door_bell_address as *mut u32;
-        unsafe { door_bell.write(self.tail as u32) };
+        unsafe { door_bell.write_volatile(self.tail as u32) };
     }
 }
 
 impl Queue<Submission> {
-    pub fn submit_command(&mut self, command: NvmeCommand) {
+    pub fn submit_command(&mut self, mut command: NvmeCommand) {
         // TODO: Handle queue full condition
+        command.command_id = self.tail as u16;
         self.commands[self.tail] = command;
         self.tail = (self.tail + 1) % self.commands.len();
         self.ring_doorbell();

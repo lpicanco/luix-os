@@ -1,4 +1,6 @@
-use spin::{Mutex, Once};
+use alloc::vec::Vec;
+
+use spin::RwLock;
 
 use crate::drivers::nvme::controller::NvmeController;
 use crate::drivers::pci::PCI_DRIVER;
@@ -8,7 +10,7 @@ mod command;
 mod controller;
 mod queue;
 
-static NVME_CONTROLLER: Once<Mutex<NvmeController>> = Once::new();
+pub(crate) static NVME_CONTROLLERS: RwLock<Vec<NvmeController>> = RwLock::new(Vec::new());
 pub(crate) fn init() {
     const SUBCLASS_NVME: u8 = 0x08;
 
@@ -31,9 +33,6 @@ pub(crate) fn init() {
                     .serial_number
             );
 
-            // TODO: Support multiple devices
-            NVME_CONTROLLER.call_once(|| Mutex::new(controller));
-
-            return;
+            NVME_CONTROLLERS.write().push(controller);
         });
 }

@@ -2,6 +2,8 @@ use alloc::vec::Vec;
 use core::fmt;
 use core::mem::MaybeUninit;
 
+use spin::Mutex;
+
 use crate::arch::instructions;
 use crate::arch::memory::paging::Page;
 use crate::bits::Bits;
@@ -9,18 +11,21 @@ use crate::drivers::nvme::command::{
     IdentifyController, IdentifyNamespace, NvmeAdminIdentifyCns, NvmeCommand, NvmeIoCommand,
 };
 use crate::drivers::nvme::queue::QueueGroup;
+use crate::drivers::BlockDevice;
 use crate::memory::address::{PhysicalAddress, VirtualAddress};
 use crate::memory::allocator::dma_allocator::Dma;
 use crate::memory::frame::PhysicalFrame;
 use crate::memory::MEMORY_MAPPER;
 use crate::trace;
 
+const NVME_QUEUE_SIZE: usize = 10;
+
 /// NVMe Controller
 /// Specification: https://nvmexpress.org/wp-content/uploads/NVM-Express-Base-Specification-2.0d-2024.01.11-Ratified.pdf
 pub(crate) struct NvmeController {
     base_address: PhysicalAddress,
-    admin_queue: QueueGroup,
-    io_queue: QueueGroup,
+    admin_queue: Mutex<QueueGroup>,
+    io_queue: Mutex<QueueGroup>,
     pub namespaces: Vec<Namespace>,
     pub identify_controller: Option<IdentifyController>,
 }
@@ -28,13 +33,13 @@ pub(crate) struct NvmeController {
 impl NvmeController {
     const QUEUE_ADDR_OFFSET: usize = 0x1000; // Offset from the base address where the queues are located
     pub fn new(base_address: PhysicalAddress) -> Self {
-        let queue_size = 5;
+        let queue_size = NVME_QUEUE_SIZE;
         let queue_base_address = base_address.as_u64() as usize + Self::QUEUE_ADDR_OFFSET;
 
         NvmeController {
             base_address,
-            admin_queue: QueueGroup::new(queue_size, queue_base_address),
-            io_queue: QueueGroup::new(queue_size, queue_base_address),
+            admin_queue: Mutex::new(QueueGroup::new(0, queue_size, queue_base_address)),
+            io_queue: Mutex::new(QueueGroup::new(1, queue_size, queue_base_address)),
             namespaces: Vec::new(),
             identify_controller: None,
         }
@@ -47,12 +52,11 @@ impl NvmeController {
         // reset controller
         regs.disable_controller();
 
+        let mut admin_queue = self.admin_queue.lock();
         regs.admin_queue_attributes =
-            ((self.admin_queue.queue_size - 1) << 16 | (self.admin_queue.queue_size - 1)) as u32;
-        regs.admin_submission_queue_base_address =
-            self.admin_queue.submission_queue_addr().as_u64();
-        regs.admin_completion_queue_base_address =
-            self.admin_queue.completion_queue_addr().as_u64();
+            ((admin_queue.queue_size - 1) << 16 | (admin_queue.queue_size - 1)) as u32;
+        regs.admin_submission_queue_base_address = admin_queue.submission_queue_addr().as_u64();
+        regs.admin_completion_queue_base_address = admin_queue.completion_queue_addr().as_u64();
 
         regs.controller_configuration
             .set_controller_command_set(regs.capabilities.command_sets_supported());
@@ -62,6 +66,7 @@ impl NvmeController {
             .set_io_submission_queue_size(6);
         regs.controller_configuration
             .set_io_completion_queue_size(4);
+        drop(admin_queue);
 
         regs.enable_controller();
 
@@ -72,18 +77,21 @@ impl NvmeController {
         self.namespaces = self.identify_namespaces();
         trace!("Namespaces: {:?}", self.namespaces);
 
+        let io_queue = self.io_queue.lock();
         self.admin_queue
+            .lock()
             .submit_command(NvmeCommand::create_completion_queue(
-                self.io_queue.completion_queue_addr(),
-                self.io_queue.queue_group_id as usize,
-                self.io_queue.queue_size, //TODO: check this
+                io_queue.completion_queue_addr(),
+                io_queue.queue_group_id as usize,
+                io_queue.queue_size - 1,
             ));
 
         self.admin_queue
+            .lock()
             .submit_command(NvmeCommand::create_submission_queue(
-                self.io_queue.submission_queue_addr(),
-                self.io_queue.queue_group_id as usize,
-                self.io_queue.queue_size,
+                io_queue.submission_queue_addr(),
+                io_queue.queue_group_id as usize,
+                io_queue.queue_size - 1,
             ));
 
         trace!("NVMe registers: {:?}", self.get_registers());
@@ -107,7 +115,7 @@ impl NvmeController {
         }
     }
 
-    fn identify_controller(&mut self) -> IdentifyController {
+    fn identify_controller(&self) -> IdentifyController {
         let data = Dma::<IdentifyController>::zeroed();
         let data_ptr = data.addr().as_u64();
         let command = NvmeCommand::create_identify(
@@ -115,7 +123,7 @@ impl NvmeController {
             NvmeAdminIdentifyCns::IdentifyController,
             Default::default(),
         );
-        self.admin_queue.submit_command(command);
+        self.admin_queue.lock().submit_command(command);
         data.clone()
     }
 
@@ -132,7 +140,7 @@ impl NvmeController {
             NvmeAdminIdentifyCns::IdentifyNamespacesId,
             Default::default(),
         );
-        self.admin_queue.submit_command(command);
+        self.admin_queue.lock().submit_command(command);
 
         namespaces_id
             .assume_init()
@@ -146,13 +154,19 @@ impl NvmeController {
                     NvmeAdminIdentifyCns::IdentifyNamespace,
                     *ns_id,
                 );
-                self.admin_queue.submit_command(command);
+                self.admin_queue.lock().submit_command(command);
                 data.as_namespace(*ns_id)
             })
             .collect()
     }
 
-    pub fn read_block(&mut self, sector: usize, buffer: &mut [MaybeUninit<u8>]) -> usize {
+    fn get_registers(&self) -> &mut NvmeRegisters {
+        unsafe { &mut *self.base_address.as_mut_ptr() }
+    }
+}
+
+impl BlockDevice for NvmeController {
+    fn read_block(&self, sector: usize, buffer: &mut [MaybeUninit<u8>]) -> usize {
         let data = Dma::<u8>::new_uninit_slice(buffer.len());
 
         let command = NvmeCommand::create_read_write(
@@ -163,13 +177,13 @@ impl NvmeController {
             self.namespaces[0].block_size,
             self.namespaces[0].namespace_id,
         );
-        self.io_queue.submit_command(command);
+        self.io_queue.lock().submit_command(command);
 
         buffer.copy_from_slice(&data);
         buffer.len()
     }
 
-    pub fn write_block(&mut self, sector: usize, buffer: &[u8]) -> usize {
+    fn write_block(&self, sector: usize, buffer: &[u8]) -> usize {
         assert!(!self.namespaces.is_empty(), "No namespaces found");
 
         let mut data = Dma::<u8>::new_uninit_slice(buffer.len()).assume_init();
@@ -183,12 +197,8 @@ impl NvmeController {
             self.namespaces[0].block_size,
             self.namespaces[0].namespace_id,
         );
-        self.io_queue.submit_command(command);
+        self.io_queue.lock().submit_command(command);
         buffer.len()
-    }
-
-    fn get_registers(&self) -> &mut NvmeRegisters {
-        unsafe { &mut *self.base_address.as_mut_ptr() }
     }
 }
 
@@ -387,13 +397,14 @@ mod tests {
     use alloc::format;
     use alloc::string::String;
     use core::mem;
-    use crate::drivers::nvme::NVME_CONTROLLER;
+
+    use crate::drivers::nvme::NVME_CONTROLLERS;
 
     use super::*;
 
     #[test_case]
     fn test_identity_controller() {
-        let mut controller = NVME_CONTROLLER.get().unwrap().lock();
+        let controller = &NVME_CONTROLLERS.read()[0];
         let identify = controller.identify_controller();
 
         assert_eq!(identify.serial_number.as_str(), "feedcafe");
@@ -401,7 +412,7 @@ mod tests {
 
     #[test_case]
     fn test_namespace_identified() {
-        let mut controller = NVME_CONTROLLER.get().unwrap().lock();
+        let controller = &NVME_CONTROLLERS.read()[0];
         let namespaces = &controller.namespaces;
 
         assert_eq!(namespaces.len(), 1);
@@ -412,9 +423,9 @@ mod tests {
 
     #[test_case]
     fn test_io_queues_created() {
-        let mut controller = NVME_CONTROLLER.get().unwrap().lock();
-        assert_eq!(controller.io_queue.queue_group_id, 1);
-        assert_eq!(controller.io_queue.queue_size, 5);
+        let controller = &NVME_CONTROLLERS.read()[0];
+        assert_eq!(controller.io_queue.lock().queue_group_id, 1);
+        assert_eq!(controller.io_queue.lock().queue_size, NVME_QUEUE_SIZE);
     }
 
     #[test_case]
@@ -424,11 +435,10 @@ mod tests {
             revision: [u8; 4],
         }
 
+        let controller = &NVME_CONTROLLERS.read()[0];
         let mut buffer = Box::<GptHeader>::new_uninit();
-        let mut controller = NVME_CONTROLLER.get().unwrap().lock();
         let read = controller.read_block(1, buffer.as_bytes_mut());
         let block = unsafe { buffer.assume_init() };
-
         assert_eq!(block.signature, *b"EFI PART");
         assert_eq!(block.revision, *b"\x00\x00\x01\x00");
         assert_eq!(read, 12);
@@ -444,11 +454,7 @@ mod tests {
 
         // Read the partition table
         let mut buffer = Box::<PartitionTable>::new_uninit();
-        let read = NVME_CONTROLLER
-            .get()
-            .unwrap()
-            .lock()
-            .read_block(2, buffer.as_bytes_mut());
+        let read = &NVME_CONTROLLERS.read()[0].read_block(2, buffer.as_bytes_mut());
         let block = unsafe { buffer.assume_init() };
 
         let partition_name = String::from_utf16_lossy(&block.partition_name);
@@ -470,15 +476,12 @@ mod tests {
                 mem::size_of::<PartitionTable>(),
             )
         };
-        let wrote = NVME_CONTROLLER.get().unwrap().lock().write_block(2, data);
+        let wrote = NVME_CONTROLLERS.read()[0].write_block(2, data);
 
         // Read the partition table again
         let mut buffer_after_write = Box::<PartitionTable>::new_uninit();
-        let read_after_write = NVME_CONTROLLER
-            .get()
-            .unwrap()
-            .lock()
-            .read_block(2, buffer_after_write.as_bytes_mut());
+        let read_after_write =
+            &NVME_CONTROLLERS.read()[0].read_block(2, buffer_after_write.as_bytes_mut());
         let block_after_write = unsafe { buffer_after_write.assume_init() };
 
         // Check if the partition name was written correctly

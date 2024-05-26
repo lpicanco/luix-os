@@ -13,7 +13,12 @@ mod directory;
 
 const FAT32_EOC: u32 = 0x0FFFFFF8; // FAT32 end of cluster chain marker
 
-pub struct Fat32FileSystem {
+struct File {
+    parent: DirectoryEntry,
+    offset: u32,
+}
+
+struct Fat32FileSystem {
     boot_sector: Fat32BootSector,
     partition: GptPartitionEntry,
     fat_area: FatArea,
@@ -33,6 +38,18 @@ impl Fat32FileSystem {
             fat_area,
             block_device: block_device.clone(),
         }
+    }
+
+    pub fn stat(&self, path: &Path) -> Option<DirectoryEntry> {
+        self.find_entry(path)
+    }
+
+    pub fn open(&self, path: &Path) -> Option<File> {
+        let entry = self.find_entry(path)?;
+        Some(File {
+            parent: entry,
+            offset: 0,
+        })
     }
 
     fn find_entry(&self, path: &Path) -> Option<DirectoryEntry> {
@@ -226,6 +243,32 @@ mod tests {
         let entry = fs.find_entry(&Path::new("/README.md").unwrap());
         assert!(entry.is_some());
         assert_eq!(entry.unwrap().file_name(), "README.MD");
+    }
+
+    #[test_case]
+    fn test_stat() {
+        let controller = NVME_CONTROLLERS.read()[0].clone();
+        let gpt = GuidedPartitionTable::read_from_disk(controller.as_ref()).unwrap();
+        let fs = Fat32FileSystem::read_from_disk(gpt.entry, controller.clone());
+        let entry = fs.stat(&Path::new("/test/deep/inside/deepfile.txt").unwrap());
+        assert!(entry.is_some());
+        let entry = entry.unwrap();
+        assert_eq!(entry.file_name(), "DEEPFILE.TXT");
+        assert_eq!(entry.size, 0x22);
+    }
+
+    #[test_case]
+    fn test_open() {
+        let controller = NVME_CONTROLLERS.read()[0].clone();
+        let gpt = GuidedPartitionTable::read_from_disk(controller.as_ref()).unwrap();
+        let fs = Fat32FileSystem::read_from_disk(gpt.entry, controller.clone());
+        let entry = fs.open(&Path::new("/test/deep/inside/deepfile.txt").unwrap());
+        assert!(entry.is_some());
+        let entry = entry.unwrap();
+
+        assert_eq!(entry.parent.file_name(), "DEEPFILE.TXT");
+        assert_eq!(entry.parent.size, 0x22);
+        assert_eq!(entry.offset, 0);
     }
 
     #[test_case]

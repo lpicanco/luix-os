@@ -52,7 +52,7 @@ impl NvmeController {
         // reset controller
         regs.disable_controller();
 
-        let mut admin_queue = self.admin_queue.lock();
+        let admin_queue = self.admin_queue.lock();
         regs.admin_queue_attributes =
             ((admin_queue.queue_size - 1) << 16 | (admin_queue.queue_size - 1)) as u32;
         regs.admin_submission_queue_base_address = admin_queue.submission_queue_addr().as_u64();

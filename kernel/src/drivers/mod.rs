@@ -3,6 +3,7 @@ use core::mem::MaybeUninit;
 
 mod pci;
 mod nvme;
+mod fs;
 pub fn init() {
     pci::init();
     nvme::init();

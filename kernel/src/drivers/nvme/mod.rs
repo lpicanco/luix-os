@@ -1,3 +1,4 @@
+use alloc::sync::Arc;
 use alloc::vec::Vec;
 
 use spin::RwLock;
@@ -10,7 +11,7 @@ mod command;
 mod controller;
 mod queue;
 
-pub(crate) static NVME_CONTROLLERS: RwLock<Vec<NvmeController>> = RwLock::new(Vec::new());
+pub(crate) static NVME_CONTROLLERS: RwLock<Vec<Arc<NvmeController>>> = RwLock::new(Vec::new());
 pub(crate) fn init() {
     const SUBCLASS_NVME: u8 = 0x08;
 
@@ -33,6 +34,6 @@ pub(crate) fn init() {
                     .serial_number
             );
 
-            NVME_CONTROLLERS.write().push(controller);
+            NVME_CONTROLLERS.write().push(Arc::new(controller));
         });
 }

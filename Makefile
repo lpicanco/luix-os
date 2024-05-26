@@ -63,12 +63,20 @@ luix-os-test: $(LIMINE_TARGET) kernel-test
 	dd if=/dev/zero bs=1M count=0 seek=42 of=$(IMAGE_NAME)
 	sgdisk $(IMAGE_NAME) -n 1:2048 -t 1:ef00 -c 1:luix-os-test
 	./target/limine/limine bios-install $(IMAGE_NAME)
-	mformat -i $(IMAGE_NAME)@@1M
+	mformat -F -i $(IMAGE_NAME)@@1M
 	mmd -i $(IMAGE_NAME)@@1M ::/EFI ::/EFI/BOOT ::/boot ::/boot/limine
 	mcopy -i $(IMAGE_NAME)@@1M target/$(TARGET)/debug/kernel-test ::/boot/kernel
 	mcopy -i $(IMAGE_NAME)@@1M kernel/limine.cfg $(LIMINE_DIR)/limine-bios.sys ::/boot/limine
 	mcopy -i $(IMAGE_NAME)@@1M $(LIMINE_DIR)/BOOTX64.EFI ::/EFI/BOOT
 	mcopy -i $(IMAGE_NAME)@@1M $(LIMINE_DIR)/BOOTIA32.EFI ::/EFI/BOOT
+
+	# Files for FAT32 tests
+	mcopy -i $(IMAGE_NAME)@@1M README.md ::/boot
+	mmd -i $(IMAGE_NAME)@@1M ::/test ::/test/deep ::/test/deep/inside
+	mmd -i $(IMAGE_NAME)@@1M ::/long-dir-name
+	echo "This is a file inside a long path" > target/deepfile.txt
+	mcopy -i $(IMAGE_NAME)@@1M target/deepfile.txt ::/test/deep/inside
+	mcopy -i $(IMAGE_NAME)@@1M README.md ::/
 
 .PHONY: clean
 clean:

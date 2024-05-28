@@ -53,11 +53,32 @@ impl GuidedPartitionTable {
 
         Some(Self { header, entry })
     }
+
+    pub fn disk_guid(&self) -> uuid::Uuid {
+        self.parse_guid(&self.header.disk_guid)
+    }
+
+    pub fn partition_guid(&self) -> uuid::Uuid {
+        self.parse_guid(&self.entry.unique_partition_guid)
+    }
+
+    pub fn partition_type_guid(&self) -> uuid::Uuid {
+        self.parse_guid(&self.entry.partition_type_guid)
+    }
+
+    fn parse_guid(&self, bytes: &[u8; 16]) -> uuid::Uuid {
+        uuid::Uuid::from_fields(
+            u32::from_le_bytes(bytes[0..4].try_into().unwrap()),
+            u16::from_le_bytes(bytes[4..6].try_into().unwrap()),
+            u16::from_le_bytes(bytes[6..8].try_into().unwrap()),
+            <&[u8; 8]>::try_from(&bytes[8..16]).unwrap(),
+        )
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use alloc::string::String;
+    use alloc::string::{String, ToString};
 
     use crate::drivers::nvme::NVME_CONTROLLERS;
 
@@ -74,11 +95,8 @@ mod tests {
         assert_eq!({ gpt.header.partition_entry_lba }, 2);
         assert_eq!({ gpt.header.partition_entry_count }, 56);
         assert_eq!(
-            { gpt.entry.partition_type_guid },
-            [
-                0x28, 0x73, 0x2A, 0xC1, 0x1F, 0xF8, 0xD2, 0x11, 0xBA, 0x4B, 0x00, 0xA0, 0xC9, 0x3E,
-                0xC9, 0x3B
-            ]
+            gpt.partition_type_guid().to_string(),
+            "c12a7328-f81f-11d2-ba4b-00a0c93ec93b"
         );
         let partition_name = gpt.entry.partition_name;
         assert_eq!(

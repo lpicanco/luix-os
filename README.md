@@ -51,6 +51,9 @@ It is a 64-bit operating system that supports both x86-64 and AArch64 architectu
 - [ ] System Calls
 - [ ] Task Scheduler
 - [ ] File System
+  - [x] FAT32 Read Support
+  - [ ] Ext2
+  - [ ] VFS
 - [ ] User Mode
 - [ ] Multicore
     - [ ] Booting on multiple cores

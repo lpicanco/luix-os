@@ -51,7 +51,7 @@ luix-os: $(LIMINE_TARGET) kernel
 	dd if=/dev/zero bs=1M count=0 seek=64 of=$(IMAGE_NAME)
 	sgdisk $(IMAGE_NAME) -n 1:2048 -t 1:ef00
 	./target/limine/limine bios-install $(IMAGE_NAME)
-	mformat -i $(IMAGE_NAME)@@1M
+	mformat -F -i $(IMAGE_NAME)@@1M
 	mmd -i $(IMAGE_NAME)@@1M ::/EFI ::/EFI/BOOT ::/boot ::/boot/limine
 	mcopy -i $(IMAGE_NAME)@@1M target/x86_64-unknown-none/debug/kernel ::/boot/kernel
 	mcopy -i $(IMAGE_NAME)@@1M kernel/limine.cfg $(LIMINE_DIR)/limine-bios.sys ::/boot/limine

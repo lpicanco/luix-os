@@ -26,6 +26,7 @@ impl Fat32FileSystem {
         partition: GptPartitionEntry,
         block_device: Arc<dyn BlockDevice>,
     ) -> Self {
+        // TODO: Check if the partition is FAT32
         let boot_sector = Fat32BootSector::read_from_disk(&partition, block_device.as_ref());
         let fat_area = FatArea::read_from_disk(&partition, &boot_sector, block_device.as_ref());
         Self {

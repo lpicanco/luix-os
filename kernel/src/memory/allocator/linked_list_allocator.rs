@@ -25,6 +25,9 @@ impl LinkedListAllocator {
             size
         );
 
+        let mut new_block = Block::new(size);
+        let new_block_ptr = addr as *mut Block;
+
         // find the last block before the new block address
         let mut leftmost_block = &mut self.head;
         while let Some(ref mut block) = leftmost_block.next {
@@ -35,7 +38,7 @@ impl LinkedListAllocator {
         }
 
         // get the block after the new block
-        let mut rightmost_block = leftmost_block.next.take();
+        let rightmost_block = leftmost_block.next.take();
 
         // merge the new block with the rightmost block if possible
         if leftmost_block.size > 0 && rightmost_block.is_some() {

@@ -20,6 +20,7 @@ version = "0.1.0"
 dependencies = [
  "limine",
  "spin",
+ "uuid",
 ]
 
 [[package]]
@@ -29,6 +30,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "846c87e24d089e8717a61098cba72b378e3525c46a87cf75b71352dcf668e68c"
 dependencies = [
  "bitflags",
+ "uuid",
 ]
 
 [[package]]
@@ -55,3 +57,9 @@ checksum = "6980e8d7511241f8acf4aebddbb1ff938df5eebe98691418c4468d0b72a96a67"
 dependencies = [
  "lock_api",
 ]
+
+[[package]]
+name = "uuid"
+version = "1.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a183cf7feeba97b4dd1c0d46788634f6221d87fa961b305bed08c851829efcc0"

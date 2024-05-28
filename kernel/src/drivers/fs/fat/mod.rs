@@ -6,6 +6,7 @@ use crate::drivers::fs::fat::boot_sector::Fat32BootSector;
 use crate::drivers::fs::fat::directory::DirectoryEntry;
 use crate::drivers::fs::gpt::GptPartitionEntry;
 use crate::drivers::fs::path::Path;
+use crate::drivers::fs::{Inode, VirtualNode};
 use crate::drivers::BlockDevice;
 
 mod boot_sector;
@@ -13,12 +14,7 @@ mod directory;
 
 const FAT32_EOC: u32 = 0x0FFFFFF8; // FAT32 end of cluster chain marker
 
-struct File {
-    parent: DirectoryEntry,
-    offset: u32,
-}
-
-struct Fat32FileSystem {
+pub(crate) struct Fat32FileSystem {
     boot_sector: Fat32BootSector,
     partition: GptPartitionEntry,
     fat_area: FatArea,
@@ -44,12 +40,30 @@ impl Fat32FileSystem {
         self.find_entry(path)
     }
 
-    pub fn open(&self, path: &Path) -> Option<File> {
+    pub fn open(&self, path: &Path) -> Option<VirtualNode> {
         let entry = self.find_entry(path)?;
-        Some(File {
-            parent: entry,
-            offset: 0,
-        })
+        let sector = self.fat_area.start_sector as u32
+            + self.fat_area.first_data_sector as u32
+            + entry.cluster();
+
+        Some(VirtualNode::new(
+            Inode::new(sector as u64),
+            entry.size as u64,
+        ))
+    }
+
+    pub fn read(&self, node: &VirtualNode, offset: usize, data: &mut [u8]) -> Result<usize, ()> {
+        // TODO: Do a better job of handling the offset. Also, check if the offset is within the file size
+        if offset + data.len() >= 512 {
+            return Err(());
+        }
+
+        let mut buffer = Box::<[u8; 512]>::new_uninit();
+        self.block_device
+            .read_block(node.inode.as_u64() as usize, buffer.as_bytes_mut());
+        let buffer = unsafe { *buffer.assume_init() };
+        data.copy_from_slice(&buffer[offset..offset + data.len()]);
+        Ok(data.len())
     }
 
     fn find_entry(&self, path: &Path) -> Option<DirectoryEntry> {
@@ -266,9 +280,27 @@ mod tests {
         assert!(entry.is_some());
         let entry = entry.unwrap();
 
-        assert_eq!(entry.parent.file_name(), "DEEPFILE.TXT");
-        assert_eq!(entry.parent.size, 0x22);
-        assert_eq!(entry.offset, 0);
+        assert_ne!(entry.inode.as_u64(), 0);
+        assert_eq!(entry.size, 0x22);
+    }
+
+    #[test_case]
+    fn test_read() {
+        let controller = NVME_CONTROLLERS.read()[0].clone();
+        let gpt = GuidedPartitionTable::read_from_disk(controller.as_ref()).unwrap();
+        let fs = Fat32FileSystem::read_from_disk(gpt.entry, controller.clone());
+        let entry = fs.open(&Path::new("/test/deep/inside/deepfile.txt").unwrap());
+        assert!(entry.is_some());
+        let entry = entry.unwrap();
+
+        let buffer = &mut [0u8; 0x11];
+        let bytes_read = fs.read(&entry, 0, buffer);
+        assert_eq!(bytes_read, Ok(0x11));
+        assert_eq!(buffer, b"This is a file in");
+
+        let bytes_read = fs.read(&entry, 0x10, buffer);
+        assert_eq!(bytes_read, Ok(0x11));
+        assert_eq!(buffer, b"nside a long path");
     }
 
     #[test_case]

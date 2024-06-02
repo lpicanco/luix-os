@@ -13,7 +13,7 @@ pub mod frame_allocator;
 mod linked_list_allocator;
 
 const HEAP_START: usize = 0xFEED_CAFE_000;
-const HEAP_SIZE: usize = 1024 * 1024 * 2; // 2MB
+const HEAP_SIZE: usize = 1024 * 1024 * 5; // 5MB
 
 #[global_allocator]
 static ALLOCATOR: MutexWrapper<LinkedListAllocator> = MutexWrapper::new(LinkedListAllocator::new());

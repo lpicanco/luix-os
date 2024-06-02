@@ -24,6 +24,7 @@ mod memory;
 pub mod print;
 mod serial;
 pub(crate) mod bits;
+mod process;
 
 pub fn init() {
     display::init();
@@ -33,6 +34,7 @@ pub fn init() {
     memory::init();
     acpi::init();
     arch::apic::init();
+    arch::gdt::init();
     arch::interrupt::init();
 
     unsafe {

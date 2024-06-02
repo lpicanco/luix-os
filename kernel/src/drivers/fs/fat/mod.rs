@@ -1,6 +1,8 @@
 use alloc::boxed::Box;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
+use core::cmp::{max, min};
+use core::mem::MaybeUninit;
 
 use crate::drivers::fs::fat::boot_sector::Fat32BootSector;
 use crate::drivers::fs::fat::directory::DirectoryEntry;
@@ -43,28 +45,62 @@ impl Fat32FileSystem {
 
     pub fn open(&self, path: &Path) -> Option<VirtualNode> {
         let entry = self.find_entry(path)?;
-        let sector = self.fat_area.start_sector as u32
-            + self.fat_area.first_data_sector as u32
-            + entry.cluster();
 
         Some(VirtualNode::new(
-            Inode::new(sector as u64),
+            Inode::new(entry.cluster() as u64),
             entry.size as u64,
         ))
     }
 
     pub fn read(&self, node: &VirtualNode, offset: usize, data: &mut [u8]) -> Result<usize, ()> {
-        // TODO: Do a better job of handling the offset. Also, check if the offset is within the file size
-        if offset + data.len() >= 512 {
+        let end_offset = offset + data.len();
+        if end_offset > (node.size - 0) as usize {
             return Err(());
         }
 
-        let mut buffer = Box::<[u8; 512]>::new_uninit();
-        self.block_device
-            .read_block(node.inode.as_u64() as usize, buffer.as_bytes_mut());
-        let buffer = unsafe { *buffer.assume_init() };
-        data.copy_from_slice(&buffer[offset..offset + data.len()]);
+        // TODO: Make this code more readable.
+        let chain_iter = self.fat_area.cluster_chain_iter(node.inode.as_u64() as u32);
+        let mut dest_start_offset = 0;
+        for (i, cluster) in chain_iter.enumerate() {
+            let current_start_offset =
+                i * self.boot_sector.bios_parameter_block.bytes_per_sector() as usize;
+
+            let current_end_offset = min(
+                dest_start_offset
+                    + self.boot_sector.bios_parameter_block.bytes_per_sector() as usize,
+                data.len(),
+            );
+
+            let buffer_start_offset = max(offset, current_start_offset) - current_start_offset;
+            let buffer_end_offset = min(
+                self.boot_sector.bios_parameter_block.bytes_per_sector() as usize,
+                buffer_start_offset + current_end_offset - dest_start_offset,
+            );
+
+            if current_end_offset < offset {
+                continue;
+            }
+
+            let mut buffer = Box::<[u8; 512]>::new_uninit();
+            self.read_cluster(cluster as usize, buffer.as_bytes_mut());
+            let buffer = unsafe { *buffer.assume_init() };
+
+            data[dest_start_offset..current_end_offset]
+                .copy_from_slice(&buffer[buffer_start_offset..buffer_end_offset]);
+
+            if current_end_offset >= end_offset {
+                break;
+            }
+
+            dest_start_offset = current_end_offset;
+        }
+
         Ok(data.len())
+    }
+
+    fn read_cluster(&self, cluster: usize, buffer: &mut [MaybeUninit<u8>]) {
+        let sector = self.fat_area.start_sector + self.fat_area.first_data_sector + cluster;
+        self.block_device.read_block(sector, buffer);
     }
 
     fn find_entry(&self, path: &Path) -> Option<DirectoryEntry> {

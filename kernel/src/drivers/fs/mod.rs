@@ -8,7 +8,7 @@ use crate::trace;
 
 mod fat;
 mod gpt;
-mod path;
+pub(crate) mod path;
 
 #[derive(PartialEq, Clone, Copy, Debug)]
 pub struct Inode(u64);
@@ -25,7 +25,7 @@ impl Inode {
 
 pub struct VirtualNode {
     inode: Inode,
-    size: u64,
+    pub(crate) size: u64,
 }
 
 impl VirtualNode {
@@ -37,7 +37,7 @@ impl VirtualNode {
 static KERNEL_FILE_REQUEST: KernelFileRequest = KernelFileRequest::new();
 
 // TODO: Move to VFS
-static BOOT_FS: RwLock<Option<Fat32FileSystem>> = RwLock::new(None);
+pub(crate) static BOOT_FS: RwLock<Option<Fat32FileSystem>> = RwLock::new(None);
 
 pub fn init() {
     BOOT_FS

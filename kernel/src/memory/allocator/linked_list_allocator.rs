@@ -41,7 +41,7 @@ impl LinkedListAllocator {
         let rightmost_block = leftmost_block.next.take();
 
         // merge the new block with the rightmost block if possible
-        if leftmost_block.size > 0 && rightmost_block.is_some() {
+        if rightmost_block.is_some() {
             let rightmost_block = rightmost_block.unwrap();
 
             // check if end of the new block is the start of the rightmost block
@@ -53,6 +53,14 @@ impl LinkedListAllocator {
             }
         } else {
             new_block.next = rightmost_block;
+        }
+
+        // merge the new block with the leftmost block if possible
+        if leftmost_block.end_addr() == addr {
+            leftmost_block.size += new_block.size;
+            // leftmost_block.next = Some(&mut *new_block_ptr);
+            leftmost_block.next = new_block.next.take();
+            return;
         }
 
         new_block_ptr.write(new_block);
@@ -145,27 +153,27 @@ mod tests {
     #[test_case]
     fn test_init() {
         let mut allocator = LinkedListAllocator::new();
-        unsafe { allocator.init(0x1000, 4096) };
+        unsafe { allocator.init(0xFEED_CAFF_000, 2048) };
 
         assert_eq!(allocator.head.size, 0);
         assert!(allocator.head.next.is_some());
-        assert_eq!(allocator.head.next.unwrap().size, 4096);
+        assert_eq!(allocator.head.next.unwrap().size, 2048);
     }
 
     #[test_case]
     fn test_alloc_block() {
         let mut allocator = LinkedListAllocator::new();
         unsafe {
-            allocator.init(0x1000, 2048);
+            allocator.init(0xFEED_CAFF_000, 2048);
             let a = allocator.alloc_block(Layout::from_size_align(1024, 1).unwrap());
             let b = allocator.alloc_block(Layout::from_size_align(256, 1).unwrap());
             let c = allocator.alloc_block(Layout::from_size_align(128, 1).unwrap());
             let d = allocator.alloc_block(Layout::from_size_align(64, 1).unwrap());
 
-            assert_eq!(a, Some(0x1000));
-            assert_eq!(b, Some(0x1400));
-            assert_eq!(c, Some(0x1500));
-            assert_eq!(d, Some(0x1580));
+            assert_eq!(a, Some(0xFEED_CAFF_000));
+            assert_eq!(b, Some(0xFEEDCAFF400));
+            assert_eq!(c, Some(0xFEEDCAFF500));
+            assert_eq!(d, Some(0xFEEDCAFF580));
         };
 
         let next = allocator.head.next.unwrap();
@@ -177,7 +185,7 @@ mod tests {
     fn test_dealloc_block() {
         let mut allocator = LinkedListAllocator::new();
         unsafe {
-            allocator.init(0x1000, 2048);
+            allocator.init(0xFEED_CAFF_000, 2048);
             let a = allocator
                 .alloc_block(Layout::from_size_align(512, 1).unwrap())
                 .unwrap();
@@ -195,11 +203,7 @@ mod tests {
         assert_eq!(allocator.head.size, 0);
 
         let mut next = allocator.head.next.as_mut().unwrap();
-        assert_eq!(next.size, 512);
-        let next = next.next.as_mut().unwrap();
-        assert_eq!(next.size, 256);
-        let next = next.next.as_mut().unwrap();
-        assert_eq!(next.size, 1280);
+        assert_eq!(next.size, 2048);
         assert!(next.next.is_none());
     }
 }

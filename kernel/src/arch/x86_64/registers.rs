@@ -16,7 +16,7 @@ pub(crate) fn read_cs() -> SegmentSelector {
 pub fn set_cs(segment: SegmentSelector) {
     unsafe {
         asm!(
-        "push {0}",
+        "push {0:r}",
         "lea {1}, [1f + rip]",
         "push {1}",
         "retfq",
@@ -31,7 +31,7 @@ pub fn set_cs(segment: SegmentSelector) {
 pub fn set_ds(segment: SegmentSelector) {
     unsafe {
         asm!(
-        "mov ds, {0}",
+        "mov ds, {0:r}",
         in(reg) segment.as_raw(),
         options(nostack, preserves_flags),
         );
@@ -41,7 +41,7 @@ pub fn set_ds(segment: SegmentSelector) {
 pub fn set_ss(segment: SegmentSelector) {
     unsafe {
         asm!(
-        "mov ss, {0}",
+        "mov ss, {0:r}",
         in(reg) segment.as_raw(),
         options(nostack, preserves_flags),
         );
@@ -51,7 +51,7 @@ pub fn set_ss(segment: SegmentSelector) {
 pub fn set_es(segment: SegmentSelector) {
     unsafe {
         asm!(
-        "mov es, {0}",
+        "mov es, {0:r}",
         in(reg) segment.as_raw(),
         options(nostack, preserves_flags),
         );
@@ -61,7 +61,7 @@ pub fn set_es(segment: SegmentSelector) {
 pub fn set_fs(segment: SegmentSelector) {
     unsafe {
         asm!(
-        "mov fs, {0}",
+        "mov fs, {0:r}",
         in(reg) segment.as_raw(),
         options(nostack, preserves_flags),
         );
@@ -71,7 +71,7 @@ pub fn set_fs(segment: SegmentSelector) {
 pub fn set_gs(segment: SegmentSelector) {
     unsafe {
         asm!(
-        "mov gs, {0}",
+        "mov gs, {0:r}",
         in(reg) segment.as_raw(),
         options(nostack, preserves_flags),
         );

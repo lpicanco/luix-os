@@ -47,6 +47,10 @@ impl VirtualAddress {
         Self(addr)
     }
 
+    pub fn zeroed() -> Self {
+        Self::new(0)
+    }
+
     pub fn as_u64(&self) -> u64 {
         self.0
     }
@@ -65,6 +69,10 @@ impl VirtualAddress {
 
     pub(crate) fn as_mut_ptr<T>(&self) -> *mut T {
         self.0 as *mut T
+    }
+
+    pub fn from_ptr<T>(ptr: *const T) -> Self {
+        Self(ptr as *const () as u64)
     }
 
     const fn index(&self, index: u16) -> u16 {

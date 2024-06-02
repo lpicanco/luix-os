@@ -1,4 +1,5 @@
 pub(crate) mod apic;
+pub mod gdt;
 mod idt;
 pub(crate) mod interrupt;
 pub(crate) mod memory;
@@ -18,6 +19,10 @@ impl SegmentSelector {
 
     pub const fn from_raw(bits: u16) -> SegmentSelector {
         SegmentSelector(bits)
+    }
+
+    pub fn as_raw(&self) -> u16 {
+        self.0
     }
 }
 

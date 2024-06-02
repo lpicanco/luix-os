@@ -31,7 +31,7 @@ pub(crate) fn init() {
         let mut idt = idt::InterruptDescriptorTable::new();
         idt.set_division_error_handler(divide_by_zero_handler);
         idt.set_double_fault_handler(double_fault_handler);
-        idt.set_general_protection_fault_handler(double_fault_handler);
+        idt.set_general_protection_fault_handler(general_protection_fault_handler);
         idt.set_overflow_handler(double_fault_handler);
         idt.set_page_fault_handler(page_fault_handler);
 
@@ -58,6 +58,16 @@ extern "x86-interrupt" fn divide_by_zero_handler(interrupt_frame: InterruptFrame
 
 extern "x86-interrupt" fn double_fault_handler(interrupt_frame: InterruptFrame) {
     println!("Error: Double fault.\n{}", interrupt_frame);
+
+    loop {
+        unsafe {
+            asm!("hlt");
+        }
+    }
+}
+
+extern "x86-interrupt" fn general_protection_fault_handler(interrupt_frame: InterruptFrame) {
+    println!("Error: General protection fault.\n{}", interrupt_frame);
 
     loop {
         unsafe {

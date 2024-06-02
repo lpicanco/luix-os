@@ -2,8 +2,8 @@ use crate::println;
 use core::mem::MaybeUninit;
 
 mod pci;
-mod nvme;
-mod fs;
+pub(crate) mod nvme;
+pub(crate) mod fs;
 pub fn init() {
     pci::init();
     nvme::init();
@@ -11,7 +11,7 @@ pub fn init() {
     println!("Drivers initialized.");
 }
 
-trait BlockDevice: Send + Sync{
+pub trait BlockDevice: Send + Sync{
     fn read_block(&self, sector: usize, buffer: &mut [MaybeUninit<u8>]) -> usize;
     fn write_block(&self, sector: usize, buffer: &[u8]) -> usize;
 }

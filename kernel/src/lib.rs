@@ -8,6 +8,7 @@
 #![feature(new_uninit)]
 #![feature(strict_provenance)]
 #![feature(maybe_uninit_as_bytes)]
+#![feature(naked_functions)]
 #![test_runner(crate::test_runner)]
 #![reexport_test_harness_main = "test_main"]
 
@@ -25,6 +26,7 @@ pub mod print;
 mod serial;
 pub(crate) mod bits;
 mod process;
+mod syscall;
 
 pub fn init() {
     display::init();

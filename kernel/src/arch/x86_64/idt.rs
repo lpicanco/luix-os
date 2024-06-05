@@ -65,8 +65,8 @@ impl InterruptDescriptorTable {
     }
 }
 
-#[repr(align(8), C)] //TODO: Is this correct?
 #[derive(Debug, Clone, Copy)]
+#[repr(C)]
 pub struct Registers {
     pub r15: usize,
     pub r14: usize,

@@ -19,8 +19,9 @@ pub struct Page {
     pub start_address: VirtualAddress,
 }
 
+pub const PAGE_SIZE: u64 = 4096;
+
 impl Page {
-    const PAGE_SIZE: u64 = 4096;
     pub fn p4_index(&self) -> u16 {
         self.start_address.p4_index()
     }
@@ -39,7 +40,7 @@ impl Page {
 
     pub fn containing_address(addr: VirtualAddress) -> Self {
         Self {
-            start_address: addr.align_down(Self::PAGE_SIZE),
+            start_address: addr.align_down(PAGE_SIZE),
         }
     }
     pub(crate) fn range_inclusive(start: Page, end: Page) -> PageIter {
@@ -60,7 +61,7 @@ impl Iterator for PageIter {
         if self.start <= self.end {
             let page = self.start;
             self.start = Page {
-                start_address: page.start_address + Page::PAGE_SIZE,
+                start_address: page.start_address + PAGE_SIZE,
             };
             Some(page)
         } else {

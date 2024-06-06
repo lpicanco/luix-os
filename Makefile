@@ -36,12 +36,16 @@ $(LIMINE_TARGET):
 	git clone https://github.com/limine-bootloader/limine.git --branch=v7.x-binary --depth=1 $(LIMINE_DIR)
 	cd $(LIMINE_DIR) && $(MAKE)
 
+.PHONY: init-process
+init-process:
+	RUSTFLAGS="-C link-args=-Tuserland/linker.ld"  cargo build --target $(TARGET) --profile $(PROFILE) --package init
+
 .PHONY: kernel
 kernel:
 	cargo build --target $(TARGET) --profile $(PROFILE) --package kernel
 
 .PHONY: kernel-test
-kernel-test:
+kernel-test: init-process
 	@rm -f target/$(TARGET)/debug/deps/kernel-*
 	cargo test --target $(TARGET) --profile $(PROFILE) --package kernel --lib --no-run
 	@cp target/$(TARGET)/debug/deps/$$(cd target/x86_64-unknown-none/debug/deps && find kernel-* -maxdepth 1 -perm -111 -type f) target/x86_64-unknown-none/debug/kernel-test
@@ -53,7 +57,8 @@ luix-os: $(LIMINE_TARGET) kernel
 	./target/limine/limine bios-install $(IMAGE_NAME)
 	mformat -F -i $(IMAGE_NAME)@@1M
 	mmd -i $(IMAGE_NAME)@@1M ::/EFI ::/EFI/BOOT ::/boot ::/boot/limine
-	mcopy -i $(IMAGE_NAME)@@1M target/x86_64-unknown-none/debug/kernel ::/boot/kernel
+	mcopy -i $(IMAGE_NAME)@@1M target/$(TARGET)/debug/kernel ::/boot/kernel
+	mcopy -i $(IMAGE_NAME)@@1M target/$(TARGET)/debug/init ::/boot/init
 	mcopy -i $(IMAGE_NAME)@@1M kernel/limine.cfg $(LIMINE_DIR)/limine-bios.sys ::/boot/limine
 	mcopy -i $(IMAGE_NAME)@@1M $(LIMINE_DIR)/BOOTX64.EFI ::/EFI/BOOT
 	mcopy -i $(IMAGE_NAME)@@1M $(LIMINE_DIR)/BOOTIA32.EFI ::/EFI/BOOT
@@ -66,6 +71,7 @@ luix-os-test: $(LIMINE_TARGET) kernel-test
 	mformat -F -i $(IMAGE_NAME)@@1M
 	mmd -i $(IMAGE_NAME)@@1M ::/EFI ::/EFI/BOOT ::/boot ::/boot/limine
 	mcopy -i $(IMAGE_NAME)@@1M target/$(TARGET)/debug/kernel-test ::/boot/kernel
+	mcopy -i $(IMAGE_NAME)@@1M target/$(TARGET)/debug/init ::/boot/init
 	mcopy -i $(IMAGE_NAME)@@1M kernel/limine.cfg $(LIMINE_DIR)/limine-bios.sys ::/boot/limine
 	mcopy -i $(IMAGE_NAME)@@1M $(LIMINE_DIR)/BOOTX64.EFI ::/EFI/BOOT
 	mcopy -i $(IMAGE_NAME)@@1M $(LIMINE_DIR)/BOOTIA32.EFI ::/EFI/BOOT

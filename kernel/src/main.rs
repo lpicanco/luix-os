@@ -11,6 +11,7 @@ use core::arch::asm;
 #[no_mangle]
 unsafe extern "C" fn _start() -> ! {
     kernel::init();
+    kernel_api::syscall::spawn("/boot/init");
 
     loop {
         asm!("hlt");

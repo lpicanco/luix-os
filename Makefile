@@ -41,7 +41,7 @@ init-process:
 	RUSTFLAGS="-C link-args=-Tuserland/linker.ld"  cargo build --target $(TARGET) --profile $(PROFILE) --package init
 
 .PHONY: kernel
-kernel:
+kernel: init-process
 	cargo build --target $(TARGET) --profile $(PROFILE) --package kernel
 
 .PHONY: kernel-test

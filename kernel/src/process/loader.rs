@@ -59,3 +59,10 @@ pub fn spawn(elf_file: &ElfFile) {
         )
     }
 }
+
+mod tests {
+    #[test_case]
+    fn test_heap_allocator() {
+        kernel_api::syscall::spawn("/boot/init");
+    }
+}

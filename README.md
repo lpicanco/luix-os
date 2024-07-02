@@ -54,10 +54,22 @@ It is a 64-bit operating system that supports both x86-64 and AArch64 architectu
   - [x] FAT32 Read Support
   - [ ] Ext2
   - [ ] VFS
+- [ ] Process Management
+  - [x] Process Creation
+  - [ ] Process Termination
+  - [ ] Process Scheduling
 - [ ] User Mode
+- [ ] Syscalls
+  - [x] Spawn
 - [ ] Multicore
     - [ ] Booting on multiple cores
     - [ ] Inter-Processor Interrupts(IPI)
+
+### User land
+- [ ] Init process
+  - [ ] Mount root filesystem
+  - [ ] Start shell
+- [ ] Shell
 
 ## Screenshots
 

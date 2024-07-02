@@ -3,4 +3,5 @@ resolver = "2"
 members = [
     "kernel",
     "kernel_api",
+    "userland/init",
 ]

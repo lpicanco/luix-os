@@ -27,6 +27,7 @@ mod serial;
 pub(crate) mod bits;
 mod process;
 mod syscall;
+pub mod utils;
 
 pub fn init() {
     display::init();

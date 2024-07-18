@@ -31,3 +31,15 @@ pub(crate) fn read_32(port: u16) -> u32 {
     }
     value
 }
+
+pub(crate) fn read_8(port: u16) -> u8 {
+    let value: u8;
+    unsafe {
+        asm!(
+        "in al, dx",
+        out("al") value,
+        in("dx") port,
+        );
+    }
+    value
+}

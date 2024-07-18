@@ -1,9 +1,8 @@
 use core::arch::asm;
-use core::fmt;
 use core::mem::size_of;
 
+use crate::arch::{InterruptFrame, PrivilegeLevel, SegmentSelector};
 use crate::arch::x86_64::registers::read_cs;
-use crate::arch::{PrivilegeLevel, SegmentSelector};
 use crate::bits::Bits;
 
 #[repr(C)]
@@ -65,47 +64,7 @@ impl InterruptDescriptorTable {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-#[repr(C)]
-pub struct Registers {
-    pub r15: usize,
-    pub r14: usize,
-    pub r13: usize,
-    pub r12: usize,
-    pub r11: usize,
-    pub r10: usize,
-    pub r9: usize,
-    pub r8: usize,
-    pub rdi: usize,
-    pub rsi: usize,
-    pub rdx: usize,
-    pub rcx: usize,
-    pub rbx: usize,
-    pub rax: usize,
-    pub rbp: usize,
-}
-
 type Handler = extern "x86-interrupt" fn(InterruptFrame);
-#[repr(C)]
-#[derive(Clone, Copy)]
-pub struct InterruptFrame {
-    pub instruction_pointer: u64,
-    pub code_segment: u64,
-    pub cpu_flags: u64,
-    pub stack_pointer: u64,
-    pub stack_segment: u64,
-}
-
-impl fmt::Display for InterruptFrame {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "InterruptFrame\n")?;
-        write!(f, "\tip: {:#x}\n", self.instruction_pointer)?;
-        write!(f, "\tcode_segment: {:#x}\n", self.code_segment)?;
-        write!(f, "\tcpu_flags: {:#x}\n", self.cpu_flags)?;
-        write!(f, "\tstack_pointer: {:#x}\n", self.stack_pointer)?;
-        write!(f, "\tstack_segment: {:#x}\n", self.stack_segment)
-    }
-}
 
 impl Entry {
     fn new(handler: Handler) -> Self {

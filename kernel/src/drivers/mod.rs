@@ -4,6 +4,8 @@ use core::mem::MaybeUninit;
 mod pci;
 pub(crate) mod nvme;
 pub(crate) mod fs;
+pub mod keyboard;
+
 pub fn init() {
     pci::init();
     nvme::init();

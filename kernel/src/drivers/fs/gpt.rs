@@ -109,6 +109,6 @@ mod tests {
             "luix-os-test"
         );
         assert_eq!({ gpt.entry.starting_lba }, 0x800);
-        assert_eq!({ gpt.entry.ending_lba }, 0x14FDE);
+        assert_eq!({ gpt.entry.ending_lba }, { gpt.header.last_usable_lba });
     }
 }

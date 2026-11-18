@@ -46,6 +46,15 @@ pub struct ProgramHeader {
     p_align: u64,
 }
 
+impl ProgramHeader {
+    pub(crate) fn contains_entry(&self, entry: u64) -> bool {
+        const EXECUTABLE: u32 = 1;
+        self.p_flags & EXECUTABLE != 0
+            && entry >= self.p_vaddr
+            && entry - self.p_vaddr < self.p_filesz
+    }
+}
+
 #[repr(C)]
 #[derive(Debug)]
 struct SectionHeader {
@@ -95,9 +104,9 @@ impl<'a> ElfFile<'a> {
         self.header.e_entry
     }
 
-    pub(crate) fn data(&self, segment_index: usize) -> &'a [u8] {
-        let header = &self.program_headers[segment_index];
-        &self.buffer[header.p_offset as usize..(header.p_offset + header.p_filesz) as usize]
+    pub(crate) fn data(&self, header: &ProgramHeader) -> Option<&'a [u8]> {
+        let end = header.p_offset.checked_add(header.p_filesz)?;
+        self.buffer.get(header.p_offset as usize..end as usize)
     }
 }
 

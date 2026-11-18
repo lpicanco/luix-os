@@ -1,8 +1,5 @@
 use core::arch::{asm, naked_asm};
-use core::ptr;
 use spin::Once;
-
-use kernel_api::syscall::{EXIT, SPAWN};
 
 use crate::arch::apic::io_apic::{Irq, IO_APIC};
 use crate::arch::apic::local_apic::{end_of_interrupt, LOCAL_APIC};
@@ -155,24 +152,7 @@ pub extern "x86-interrupt" fn syscall_handler_naked_wrap(_interrupt_frame: Inter
     );
 }
 
-// TODO: Move to the process
-static mut STACK_FRAME: Option<InterruptFrame> = None;
-static mut REGISTERS: Option<Registers> = None;
-
 pub extern "C" fn syscall_handler(interrupt_frame: &mut InterruptFrame, regs: &mut Registers) {
-    if regs.rax == SPAWN {
-        unsafe {
-            STACK_FRAME = Some(interrupt_frame.clone());
-            REGISTERS = Some(regs.clone());
-        }
-    }
-
-    syscall::dispatcher(regs.rax, regs.rdi, regs.rsi);
-
-    if regs.rax == EXIT {
-        unsafe {
-            ptr::write_volatile(interrupt_frame as *mut InterruptFrame, STACK_FRAME.unwrap());
-            ptr::write_volatile(regs, REGISTERS.unwrap());
-        }
-    }
+    let ret = syscall::dispatcher(interrupt_frame, regs, regs.rax, regs.rdi, regs.rsi);
+    regs.rax = ret;
 }

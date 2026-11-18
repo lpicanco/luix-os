@@ -4,4 +4,5 @@ members = [
     "kernel",
     "kernel_api",
     "userland/init",
+    "userland/process-test",
 ]

@@ -35,7 +35,7 @@ pub enum PrivilegeLevel {
     Ring3 = 3,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy)]
 #[repr(C)]
 pub struct Registers {
     pub r15: usize,

@@ -9,7 +9,8 @@ use crate::bits::Bits;
 use crate::memory::address::VirtualAddress;
 use crate::println;
 
-const STACK_SIZE: usize = 8192;
+// User-mode spawn syscalls load ELF files through FAT32 and NVMe on this stack.
+const STACK_SIZE: usize = 32 * 1024;
 pub static SELECTORS: Once<Selectors> = Once::new();
 static GDT: Once<GlobalDescriptorTable> = Once::new();
 static TSS: Once<TaskStateSegment> = Once::new();

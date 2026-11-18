@@ -44,8 +44,12 @@ init-process:
 kernel: init-process
 	cargo build --target $(TARGET) --profile $(PROFILE) --package kernel
 
+.PHONY: process-test
+process-test:
+	RUSTFLAGS="-C link-args=-Tuserland/linker.ld" cargo build --target $(TARGET) --profile $(PROFILE) --package process-test
+
 .PHONY: kernel-test
-kernel-test: init-process
+kernel-test: init-process process-test
 	@messages=$$(cargo test --target $(TARGET) --profile $(PROFILE) --package kernel --lib --no-run --message-format=json-render-diagnostics) && \
 	executable=$$(printf '%s\n' "$$messages" | jq -er 'select(.reason == "compiler-artifact" and .target.name == "kernel" and .profile.test and .executable != null) | .executable') && \
 	cp "$$executable" "target/$(TARGET)/debug/kernel-test"
@@ -71,6 +75,8 @@ luix-os-test: $(LIMINE_TARGET) kernel-test
 	mformat -F -i $(IMAGE_NAME)@@1M
 	mmd -i $(IMAGE_NAME)@@1M ::/EFI ::/EFI/BOOT ::/boot ::/boot/limine
 	mcopy -i $(IMAGE_NAME)@@1M target/$(TARGET)/debug/kernel-test ::/boot/kernel
+	mcopy -i $(IMAGE_NAME)@@1M target/$(TARGET)/debug/spawn-test ::/boot/spawn.tst
+	mcopy -i $(IMAGE_NAME)@@1M target/$(TARGET)/debug/exit-test ::/boot/exit.tst
 	mcopy -i $(IMAGE_NAME)@@1M target/$(TARGET)/debug/init ::/boot/init
 	mcopy -i $(IMAGE_NAME)@@1M kernel/limine.cfg $(LIMINE_DIR)/limine-bios.sys ::/boot/limine
 	mcopy -i $(IMAGE_NAME)@@1M $(LIMINE_DIR)/BOOTX64.EFI ::/EFI/BOOT

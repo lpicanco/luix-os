@@ -1,5 +1,8 @@
+use core::arch::asm;
+use core::ptr;
+
 use crate::allocate_frame;
-use crate::arch::memory::paging::{Page, PageTable, PageTableEntry};
+use crate::arch::memory::paging::{Page, PageTable, PageTableEntry, PAGE_SIZE};
 use crate::arch::registers::read_cr3;
 use crate::memory::address::{PhysicalAddress, VirtualAddress};
 use crate::memory::frame::PhysicalFrame;
@@ -99,6 +102,8 @@ impl MemoryMapper {
                         current_frame = frame.clone();
                     } else {
                         current_frame = allocate_frame!();
+                        let table = self.physical_memory_offset + current_frame.start_address.as_u64();
+                        unsafe { ptr::write_bytes(table.as_mut_ptr::<u8>(), 0, PAGE_SIZE as usize) };
                     }
                 }
             };
@@ -111,7 +116,7 @@ impl MemoryMapper {
         }
     }
 
-    pub fn unmap_page(&self, page: Page) {
+    pub fn unmap_page(&self, page: Page) -> Option<PhysicalFrame> {
         let mut frame = PhysicalFrame::containing_address(read_cr3());
 
         let table_indexes = [
@@ -121,28 +126,22 @@ impl MemoryMapper {
             page.p1_index(),
         ];
 
-        let mut page_table_entry: Option<&mut PageTableEntry> = None;
-
-        for &index in &table_indexes {
+        for (level, &index) in table_indexes.iter().enumerate() {
             let page_table_virt = self.physical_memory_offset + frame.start_address.as_u64();
 
             let page_table_ptr: *mut PageTable = page_table_virt.as_mut_ptr();
             let page_table = unsafe { &mut *page_table_ptr };
-            page_table_entry = Some(&mut page_table[index as usize]);
-
-            if page_table_entry.as_ref().is_some_and(|pte| pte.huge_page()) {
-                break;
+            let entry = &mut page_table[index as usize];
+            frame = entry.frame()?;
+            if level == table_indexes.len() - 1 || entry.huge_page() {
+                entry.set_unused();
+                unsafe {
+                    asm!("invlpg [{}]", in(reg) page.start_address.as_u64(), options(nostack, preserves_flags));
+                }
+                return Some(frame);
             }
-
-            frame = match page_table_entry.as_ref().unwrap().frame() {
-                Some(frame) => frame,
-                None => return,
-            };
         }
-
-        if let Some(page_table_entry) = page_table_entry {
-            page_table_entry.set_unused()
-        }
+        None
     }
 
     fn map_page_entry(
@@ -222,7 +221,7 @@ mod tests {
         assert_eq!(phys, Some(frame.start_address));
 
         // unmap the page
-        mapper.unmap_page(page);
+        assert_eq!(mapper.unmap_page(page), Some(frame));
 
         // check that the page is not mapped
         let phys = mapper.translate_addr(virt);

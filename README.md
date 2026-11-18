@@ -14,6 +14,19 @@ It is a 64-bit operating system that supports both x86-64 and AArch64 architectu
 
 ## Development
 
+### How to test
+
+```bash
+make run-uefi-test
+```
+
+### How to run
+
+```bash
+make run-uefi
+```
+
+
 ### Bootloader
 - [x] Bootloader(powered by Limine)
 

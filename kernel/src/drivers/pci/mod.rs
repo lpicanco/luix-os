@@ -210,7 +210,7 @@ fn get_pci_address(bus: u16, device: u16, function: u16, offset: u8) -> u32 {
 
 #[cfg(test)]
 mod tests {
-    use core::assert_matches::assert_matches;
+    use core::assert_matches;
 
     use super::*;
 

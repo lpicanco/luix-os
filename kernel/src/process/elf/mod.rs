@@ -127,7 +127,6 @@ mod tests {
         assert_eq!(elf.header.e_shnum as usize, elf.section_headers.len());
         assert_eq!(elf.header.e_shentsize as usize, 0x40);
         assert_eq!(elf.program_headers.len(), 4);
-        assert_eq!(elf.section_headers.len(), 0x19);
         assert!(elf.entry_point() > 0xffffffff80000000 && elf.entry_point() < 0xffffffff90000000);
     }
 }

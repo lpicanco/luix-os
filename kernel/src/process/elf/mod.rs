@@ -114,19 +114,15 @@ impl<'a> ElfFile<'a> {
 mod tests {
     use alloc::vec;
 
-    use crate::drivers::fs::path::Path;
-    use crate::drivers::fs::BOOT_FS;
+    use crate::drivers::fs::vfs;
 
     use super::*;
 
     #[test_case]
     fn test_load_elf() {
-        let fs_opt = BOOT_FS.read();
-        let fs = fs_opt.as_ref().unwrap();
-        let node = fs.open(&Path::new("/boot/kernel").unwrap()).unwrap();
-
-        let mut buffer = vec![0; node.size as usize];
-        fs.read(&node, 0, &mut buffer).unwrap();
+        let file = vfs::open("/boot/kernel").unwrap();
+        let mut buffer = vec![0; file.len()];
+        assert_eq!(file.read_at(0, &mut buffer), Ok(buffer.len()));
 
         let elf = ElfFile::parse(&buffer);
 

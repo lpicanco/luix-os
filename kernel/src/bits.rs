@@ -47,7 +47,6 @@ bits_number_impl! {u8 u16 i32 u32 u64}
 
 #[cfg(test)]
 mod tests {
-    use core::assert_matches::assert_matches;
     use super::*;
 
     #[test_case]

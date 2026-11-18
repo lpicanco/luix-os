@@ -93,7 +93,12 @@ mod tests {
         assert_eq!({ gpt.header.header_size }, 92);
         assert_eq!({ gpt.header.header_lba }, 1);
         assert_eq!({ gpt.header.partition_entry_lba }, 2);
-        assert_eq!({ gpt.header.partition_entry_count }, 56);
+        let entry_count = u64::from(gpt.header.partition_entry_count);
+        let entry_size = u64::from(gpt.header.partition_entry_size);
+        assert!(entry_count > 0);
+        assert_eq!(entry_size, core::mem::size_of::<GptPartitionEntry>() as u64);
+        let table_sectors = (entry_count * entry_size).div_ceil(512);
+        assert!(gpt.header.partition_entry_lba + table_sectors <= gpt.header.first_usable_lba);
         assert_eq!(
             gpt.partition_type_guid().to_string(),
             "c12a7328-f81f-11d2-ba4b-00a0c93ec93b"

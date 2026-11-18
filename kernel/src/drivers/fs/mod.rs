@@ -87,9 +87,9 @@ mod tests {
 
         let fs = fs_opt.as_ref().unwrap();
 
-        let entry = fs.open(&Path::new("/boot/kernel").unwrap());
-        assert!(entry.is_some());
-        let entry = entry.unwrap();
-        assert!(entry.size > 3_000_000);
+        let entry = fs.open(&Path::new("/boot/kernel").unwrap()).unwrap();
+        let mut magic = [0; 4];
+        assert_eq!(fs.read(&entry, 0, &mut magic), Ok(magic.len()));
+        assert_eq!(&magic, b"\x7fELF");
     }
 }

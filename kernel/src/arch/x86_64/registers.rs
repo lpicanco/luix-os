@@ -17,10 +17,10 @@ pub fn set_cs(segment: SegmentSelector) {
     unsafe {
         asm!(
         "push {0:r}",
-        "lea {1}, [1f + rip]",
+        "lea {1}, [2f + rip]",
         "push {1}",
         "retfq",
-        "1:",
+        "2:",
         in(reg) segment.as_raw(),
         lateout(reg) _,
         options(preserves_flags),

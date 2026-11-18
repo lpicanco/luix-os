@@ -7,7 +7,6 @@ use crate::acpi::madt::Madt;
 use crate::acpi::rsdt::Rsdt;
 use crate::acpi::sdt::Signature;
 
-mod acpi_from_lib;
 pub(crate) mod madt;
 mod rsdp;
 mod rsdt;

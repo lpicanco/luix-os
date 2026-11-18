@@ -271,19 +271,25 @@ mod tests {
         let gpt = GuidedPartitionTable::read_from_disk(controller.as_ref()).unwrap();
         let fs = Fat32FileSystem::read_from_disk(gpt.entry, controller);
 
-        let mut iter = fs.fat_area.cluster_chain_iter(2);
-        assert_eq!(iter.next(), Some(2));
+        let small_file = fs
+            .stat(&Path::new("/test/deep/inside/deepfile.txt").unwrap())
+            .unwrap();
+        let mut iter = fs.fat_area.cluster_chain_iter(small_file.cluster());
+        assert_eq!(iter.next(), Some(small_file.cluster()));
         assert_eq!(iter.next(), None);
 
-        let mut iter = fs.fat_area.cluster_chain_iter(6);
-        assert_eq!(iter.next(), Some(6));
-        assert_eq!(iter.next(), None);
-
-        let mut iter = fs.fat_area.cluster_chain_iter(7);
-        assert_eq!(iter.next(), Some(7));
-        assert_eq!(iter.next(), Some(8));
-        assert_eq!(iter.next(), Some(9));
-        assert!(iter.count() > 5000)
+        let kernel = fs.stat(&Path::new("/boot/kernel").unwrap()).unwrap();
+        let bpb = fs.boot_sector.bios_parameter_block;
+        let bytes_per_cluster =
+            u32::from(bpb.bytes_per_sector()) * u32::from(bpb.sectors_per_cluster);
+        let expected_clusters = kernel.size.div_ceil(bytes_per_cluster) as usize;
+        assert!(expected_clusters > 1);
+        let actual_clusters = fs
+            .fat_area
+            .cluster_chain_iter(kernel.cluster())
+            .take(expected_clusters + 1)
+            .count();
+        assert_eq!(actual_clusters, expected_clusters);
     }
 
     #[test_case]

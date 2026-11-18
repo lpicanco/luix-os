@@ -1,4 +1,4 @@
-use core::arch::asm;
+use core::arch::{asm, naked_asm};
 use core::ptr;
 use spin::Once;
 
@@ -6,9 +6,8 @@ use kernel_api::syscall::{EXIT, SPAWN};
 
 use crate::arch::apic::io_apic::{Irq, IO_APIC};
 use crate::arch::apic::local_apic::{end_of_interrupt, LOCAL_APIC};
-use crate::arch::x86_64::idt::{InterruptFrame, Registers};
 use crate::arch::x86_64::{idt, registers};
-use crate::arch::PrivilegeLevel;
+use crate::arch::{InterruptFrame, PrivilegeLevel, Registers};
 use crate::{println, syscall};
 
 static IDT: Once<idt::InterruptDescriptorTable> = Once::new();
@@ -110,51 +109,50 @@ extern "x86-interrupt" fn keyboard_interrupt_handler(_: InterruptFrame) {
     end_of_interrupt();
 }
 
-#[naked]
-pub extern "x86-interrupt" fn syscall_handler_naked_wrap(interrupt_frame: InterruptFrame) {
-    unsafe {
-        asm!(
+// The IDT enters with an interrupt frame on the stack. The wrapper saves
+// the registers for the syscall handler and returns through `iretq`.
+#[unsafe(naked)]
+pub extern "x86-interrupt" fn syscall_handler_naked_wrap(_interrupt_frame: InterruptFrame) {
+    naked_asm!(
         "
-                push rbp
-                push rax
-                push rbx
-                push rcx
-                push rdx
-                push rsi
-                push rdi
-                push r8
-                push r9
-                push r10
-                push r11
-                push r12
-                push r13
-                push r14
-                push r15
-                mov rsi, rsp // registers
-                mov rdi, rsp
-                add rdi, 15*8 // interrupt_frame
-                call {}
-                pop r15
-                pop r14
-                pop r13
-                pop r12
-                pop r11
-                pop r10
-                pop r9
-                pop r8
-                pop rdi
-                pop rsi
-                pop rdx
-                pop rcx
-                pop rbx
-                pop rax
-                pop rbp
-                iretq
-            ",
+        push rbp
+        push rax
+        push rbx
+        push rcx
+        push rdx
+        push rsi
+        push rdi
+        push r8
+        push r9
+        push r10
+        push r11
+        push r12
+        push r13
+        push r14
+        push r15
+        mov rsi, rsp // registers
+        mov rdi, rsp
+        add rdi, 15*8 // interrupt_frame
+        call {}
+        pop r15
+        pop r14
+        pop r13
+        pop r12
+        pop r11
+        pop r10
+        pop r9
+        pop r8
+        pop rdi
+        pop rsi
+        pop rdx
+        pop rcx
+        pop rbx
+        pop rax
+        pop rbp
+        iretq
+        ",
         sym syscall_handler,
-        options(noreturn)
-        );
-    }
+    );
 }
 
 // TODO: Move to the process

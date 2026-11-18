@@ -9,7 +9,7 @@ pub struct BiosParameterBlock {
     boot_jump: [u8; 3],
     oem_identifier: [u8; 8],
     bytes_per_sector_le: u16,
-    sectors_per_cluster: u8,
+    pub(super) sectors_per_cluster: u8,
     reserved_sectors_le: u16,
     fat_count: u8,
     root_directories_count_le: u16,

@@ -46,9 +46,9 @@ kernel: init-process
 
 .PHONY: kernel-test
 kernel-test: init-process
-	@rm -f target/$(TARGET)/debug/deps/kernel-*
-	cargo test --target $(TARGET) --profile $(PROFILE) --package kernel --lib --no-run
-	@cp target/$(TARGET)/debug/deps/$$(cd target/x86_64-unknown-none/debug/deps && find kernel-* -maxdepth 1 -perm -111 -type f) target/x86_64-unknown-none/debug/kernel-test
+	@messages=$$(cargo test --target $(TARGET) --profile $(PROFILE) --package kernel --lib --no-run --message-format=json-render-diagnostics) && \
+	executable=$$(printf '%s\n' "$$messages" | jq -er 'select(.reason == "compiler-artifact" and .target.name == "kernel" and .profile.test and .executable != null) | .executable') && \
+	cp "$$executable" "target/$(TARGET)/debug/kernel-test"
 
 luix-os: $(LIMINE_TARGET) kernel
 	rm -f $(IMAGE_NAME)

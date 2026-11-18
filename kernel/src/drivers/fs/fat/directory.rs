@@ -24,7 +24,7 @@ impl DirectoryEntry {
         self.attributes == 0x0F
     }
 
-    fn is_directory(&self) -> bool {
+    pub(super) fn is_directory(&self) -> bool {
         self.attributes & 0x10 != 0
     }
 

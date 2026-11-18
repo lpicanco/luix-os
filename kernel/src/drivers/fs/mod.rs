@@ -1,5 +1,4 @@
 use limine::request::KernelFileRequest;
-use spin::RwLock;
 use uuid::Uuid;
 
 use crate::drivers::fs::fat::Fat32FileSystem;
@@ -8,41 +7,14 @@ use crate::trace;
 
 mod fat;
 mod gpt;
-pub(crate) mod path;
-
-#[derive(PartialEq, Clone, Copy, Debug)]
-pub struct Inode(u64);
-
-impl Inode {
-    fn new(inode: u64) -> Self {
-        Self(inode)
-    }
-
-    fn as_u64(&self) -> u64 {
-        self.0
-    }
-}
-
-pub struct VirtualNode {
-    inode: Inode,
-    pub(crate) size: u64,
-}
-
-impl VirtualNode {
-    pub fn new(inode: Inode, size: u64) -> Self {
-        Self { inode, size }
-    }
-}
+mod path;
+pub(crate) mod vfs;
 
 static KERNEL_FILE_REQUEST: KernelFileRequest = KernelFileRequest::new();
 
-// TODO: Move to VFS
-pub(crate) static BOOT_FS: RwLock<Option<Fat32FileSystem>> = RwLock::new(None);
-
 pub fn init() {
-    BOOT_FS
-        .write()
-        .replace(find_boot_fs().expect("Failed to find boot fs"));
+    // TODO: Replace the temporary FAT32 root mount with configurable mount points.
+    vfs::mount_root(find_boot_fs().expect("Failed to find boot fs"));
 }
 
 fn find_boot_fs() -> Option<Fat32FileSystem> {
@@ -73,23 +45,4 @@ fn find_boot_fs() -> Option<Fat32FileSystem> {
         }
     }
     None
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::drivers::fs::path::Path;
-    use super::*;
-
-    #[test_case]
-    fn test_init_boot_fs() {
-        let fs_opt = BOOT_FS.read();
-        assert!(fs_opt.is_some());
-
-        let fs = fs_opt.as_ref().unwrap();
-
-        let entry = fs.open(&Path::new("/boot/kernel").unwrap()).unwrap();
-        let mut magic = [0; 4];
-        assert_eq!(fs.read(&entry, 0, &mut magic), Ok(magic.len()));
-        assert_eq!(&magic, b"\x7fELF");
-    }
 }

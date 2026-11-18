@@ -1,14 +1,14 @@
 use alloc::boxed::Box;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
-use core::cmp::{max, min};
+use core::cmp::min;
 use core::mem::MaybeUninit;
 
 use crate::drivers::fs::fat::boot_sector::Fat32BootSector;
 use crate::drivers::fs::fat::directory::DirectoryEntry;
 use crate::drivers::fs::gpt::GptPartitionEntry;
 use crate::drivers::fs::path::Path;
-use crate::drivers::fs::{Inode, VirtualNode};
+use crate::drivers::fs::vfs::{Error, FileSystem, Inode, VirtualNode};
 use crate::drivers::BlockDevice;
 
 mod boot_sector;
@@ -43,84 +43,74 @@ impl Fat32FileSystem {
         self.find_entry(path)
     }
 
-    pub fn open(&self, path: &Path) -> Option<VirtualNode> {
-        let entry = self.find_entry(path)?;
-
-        Some(VirtualNode::new(
-            Inode::new(entry.cluster() as u64),
-            entry.size as u64,
-        ))
-    }
-
-    pub fn read(&self, node: &VirtualNode, offset: usize, data: &mut [u8]) -> Result<usize, ()> {
-        let end_offset = offset + data.len();
-        if end_offset > (node.size - 0) as usize {
-            return Err(());
-        }
-
-        // TODO: Make this code more readable.
-        let chain_iter = self.fat_area.cluster_chain_iter(node.inode.as_u64() as u32);
-        let mut dest_start_offset = 0;
-        for (i, cluster) in chain_iter.enumerate() {
-            let current_start_offset =
-                i * self.boot_sector.bios_parameter_block.bytes_per_sector() as usize;
-
-            let current_end_offset = min(
-                dest_start_offset
-                    + self.boot_sector.bios_parameter_block.bytes_per_sector() as usize,
-                data.len(),
-            );
-
-            let buffer_start_offset = max(offset, current_start_offset) - current_start_offset;
-            let buffer_end_offset = min(
-                self.boot_sector.bios_parameter_block.bytes_per_sector() as usize,
-                buffer_start_offset + current_end_offset - dest_start_offset,
-            );
-
-            if current_end_offset < offset {
-                continue;
-            }
-
-            let mut buffer = Box::<[u8; 512]>::new_uninit();
-            self.read_cluster(cluster as usize, buffer.as_bytes_mut());
-            let buffer = unsafe { *buffer.assume_init() };
-
-            data[dest_start_offset..current_end_offset]
-                .copy_from_slice(&buffer[buffer_start_offset..buffer_end_offset]);
-
-            if current_end_offset >= end_offset {
-                break;
-            }
-
-            dest_start_offset = current_end_offset;
-        }
-
-        Ok(data.len())
-    }
-
-    fn read_cluster(&self, cluster: usize, buffer: &mut [MaybeUninit<u8>]) {
+    fn read_cluster(&self, cluster: usize, buffer: &mut [MaybeUninit<u8>]) -> usize {
         let sector = self.fat_area.start_sector + self.fat_area.first_data_sector + cluster;
-        self.block_device.read_block(sector, buffer);
+        self.block_device.read_block(sector, buffer)
     }
 
     fn find_entry(&self, path: &Path) -> Option<DirectoryEntry> {
         let mut found_entry = None;
         let mut cluster = self.boot_sector.root_cluster_number;
-        for path_part in path.iter() {
+        let mut parts = path.iter().peekable();
+        while let Some(part) = parts.next() {
             let mut walker =
                 DirectoryWalker::new(cluster, &self.fat_area, self.block_device.clone());
+            let entry = walker.find(|entry| {
+                !entry.is_long_name() && entry.file_name().eq_ignore_ascii_case(part)
+            })?;
+            if parts.peek().is_some() && !entry.is_directory() {
+                return None;
+            }
+            cluster = entry.cluster();
+            found_entry = Some(entry);
+        }
+        found_entry
+    }
+}
 
-            found_entry =
-                match walker.find(|entry| entry.file_name().eq_ignore_ascii_case(path_part)) {
-                    Some(entry) => {
-                        cluster = entry.cluster();
-                        Some(entry)
-                    }
-                    None => return None,
-                };
+impl FileSystem for Fat32FileSystem {
+    fn open(&self, path: &Path<'_>) -> Result<VirtualNode, Error> {
+        if path.iter().next().is_none() {
+            return Err(Error::IsDirectory);
+        }
+        let entry = self.find_entry(path).ok_or(Error::NotFound)?;
+        if entry.is_directory() {
+            return Err(Error::IsDirectory);
+        }
+        Ok(VirtualNode {
+            inode: Inode::new(entry.cluster().into()),
+            size: entry.size as usize,
+        })
+    }
+
+    fn read_at(&self, node: &VirtualNode, offset: usize, data: &mut [u8]) -> Result<usize, Error> {
+        let count = min(data.len(), node.size.saturating_sub(offset));
+        if count == 0 {
+            return Ok(0);
         }
 
-        found_entry
+        let sector_size = self.fat_area.sector_size;
+        let mut buffer = Box::<[u8; 512]>::new_uninit();
+        if sector_size != buffer.as_bytes_mut().len() {
+            return Err(Error::Io);
+        }
+        let mut sector_offset = offset % sector_size;
+        let mut copied = 0;
+        let clusters = self.fat_area.cluster_chain_iter(node.inode.as_u64() as u32);
+        for cluster in clusters.skip(offset / sector_size) {
+            if self.read_cluster(cluster as usize, buffer.as_bytes_mut()) != sector_size {
+                return Err(Error::Io);
+            }
+            let bytes = unsafe { buffer.assume_init_ref() };
+            let len = min(count - copied, sector_size - sector_offset);
+            data[copied..copied + len].copy_from_slice(&bytes[sector_offset..sector_offset + len]);
+            copied += len;
+            if copied == count {
+                return Ok(copied);
+            }
+            sector_offset = 0;
+        }
+        Err(Error::Io)
     }
 }
 
@@ -186,19 +176,15 @@ impl<'a> Iterator for FatClusterIterator<'a> {
     type Item = u32;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.current_cluster >= FAT32_EOC {
+        if self.current_cluster < 2 || self.current_cluster >= FAT32_EOC {
             return None;
         }
 
         let next_cluster = self.current_cluster;
         let fat_offset = self.current_cluster as usize * 4;
 
-        self.current_cluster = u32::from_le_bytes([
-            self.fat[fat_offset],
-            self.fat[fat_offset + 1],
-            self.fat[fat_offset + 2],
-            self.fat[fat_offset + 3],
-        ]) & 0x0FFF_FFFF; // Mask to 28 bits to ignore the high 4 bits
+        let entry = self.fat.get(fat_offset..fat_offset + 4)?;
+        self.current_cluster = u32::from_le_bytes(entry.try_into().unwrap()) & 0x0FFF_FFFF;
 
         Some(next_cluster)
     }
@@ -319,9 +305,9 @@ mod tests {
         let controller = NVME_CONTROLLERS.read()[0].clone();
         let gpt = GuidedPartitionTable::read_from_disk(controller.as_ref()).unwrap();
         let fs = Fat32FileSystem::read_from_disk(gpt.entry, controller.clone());
-        let entry = fs.open(&Path::new("/test/deep/inside/deepfile.txt").unwrap());
-        assert!(entry.is_some());
-        let entry = entry.unwrap();
+        let entry = fs
+            .open(&Path::new("/test/deep/inside/deepfile.txt").unwrap())
+            .unwrap();
 
         assert_ne!(entry.inode.as_u64(), 0);
         assert_eq!(entry.size, 0x22);
@@ -332,16 +318,16 @@ mod tests {
         let controller = NVME_CONTROLLERS.read()[0].clone();
         let gpt = GuidedPartitionTable::read_from_disk(controller.as_ref()).unwrap();
         let fs = Fat32FileSystem::read_from_disk(gpt.entry, controller.clone());
-        let entry = fs.open(&Path::new("/test/deep/inside/deepfile.txt").unwrap());
-        assert!(entry.is_some());
-        let entry = entry.unwrap();
+        let entry = fs
+            .open(&Path::new("/test/deep/inside/deepfile.txt").unwrap())
+            .unwrap();
 
         let buffer = &mut [0u8; 0x11];
-        let bytes_read = fs.read(&entry, 0, buffer);
+        let bytes_read = fs.read_at(&entry, 0, buffer);
         assert_eq!(bytes_read, Ok(0x11));
         assert_eq!(buffer, b"This is a file in");
 
-        let bytes_read = fs.read(&entry, 0x10, buffer);
+        let bytes_read = fs.read_at(&entry, 0x10, buffer);
         assert_eq!(bytes_read, Ok(0x11));
         assert_eq!(buffer, b"nside a long path");
     }

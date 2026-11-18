@@ -3,8 +3,7 @@ use alloc::vec;
 use kernel_api::syscall::{EXIT, PRINT_LINE, SPAWN};
 
 use crate::arch::{InterruptFrame, Registers};
-use crate::drivers::fs::path::Path;
-use crate::drivers::fs::BOOT_FS;
+use crate::drivers::fs::vfs;
 use crate::process::elf::ElfFile;
 use crate::{println, trace};
 
@@ -29,7 +28,12 @@ pub fn dispatcher(
     }
 }
 
-fn spawn(interrupt_frame: &mut InterruptFrame, regs: &mut Registers, p0: usize, p1: usize) -> usize {
+fn spawn(
+    interrupt_frame: &mut InterruptFrame,
+    regs: &mut Registers,
+    p0: usize,
+    p1: usize,
+) -> usize {
     let path = {
         let slice = unsafe { core::slice::from_raw_parts(p0 as *const u8, p1) };
         core::str::from_utf8(slice)
@@ -37,14 +41,13 @@ fn spawn(interrupt_frame: &mut InterruptFrame, regs: &mut Registers, p0: usize, 
     .unwrap();
     trace!("Spawning process: {}", path);
 
-    let buffer = {
-        let fs_opt = BOOT_FS.read();
-        let fs = fs_opt.as_ref().unwrap();
-        let node = fs.open(&Path::new(path).unwrap()).unwrap();
-        let mut buffer = vec![0; node.size as usize];
-        fs.read(&node, 0, &mut buffer).unwrap();
-        buffer
+    let Ok(file) = vfs::open(path) else {
+        return 1;
     };
+    let mut buffer = vec![0; file.len()];
+    if file.read_at(0, &mut buffer) != Ok(buffer.len()) {
+        return 1;
+    }
 
     let elf = ElfFile::parse(&buffer);
     usize::from(crate::process::loader::spawn(&elf, interrupt_frame, regs).is_err())

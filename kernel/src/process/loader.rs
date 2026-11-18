@@ -110,12 +110,16 @@ fn release_pages(pages: impl Iterator<Item = Page>) {
 mod tests {
     use kernel_api::syscall::SPAWN;
 
-    use crate::drivers::fs::BOOT_FS;
-
     use super::*;
 
     #[test_case]
     fn test_spawn_exit_and_resume() {
+        let missing = "/boot/MISSING.TST";
+        assert_eq!(
+            unsafe { kernel_api::make_syscall!(SPAWN, missing.as_ptr(), missing.len()) },
+            1
+        );
+
         let path = "/boot/spawn.tst";
         let mut frames_after_first_run = None;
         for _ in 0..2 {
@@ -125,7 +129,6 @@ mod tests {
             );
 
             assert!(PROCESS_LIST.read().is_empty());
-            assert!(BOOT_FS.try_write().is_some());
             let mapper = MEMORY_MAPPER.get().unwrap();
             for base in [PROCESS_START, PROCESS_START + PROCESS_SIZE] {
                 for page in process_pages(base) {

@@ -17,4 +17,4 @@ ureq = { version = "3", default-features = false, features = ["rustls", "platfor
 uuid = { version = "1", features = ["v4"] }
 
 [target.'cfg(unix)'.dependencies]
-signal-hook = { version = "0.3", default-features = false }
+signal-hook = { version = "0.4.6", default-features = false }

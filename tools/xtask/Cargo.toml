@@ -1,0 +1,20 @@
+[workspace]
+
+[package]
+name = "xtask"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+anyhow = "1"
+fatfs = { version = "0.3.6", default-features = false, features = ["std", "alloc"] }
+fscommon = "0.1.1"
+gptman = { version = "3.1.1", default-features = false }
+sha2 = "0.10"
+tempfile = "3"
+ureq = { version = "3", default-features = false, features = ["rustls", "platform-verifier"] }
+uuid = { version = "1", features = ["v4"] }
+
+[target.'cfg(unix)'.dependencies]
+signal-hook = { version = "0.4.6", default-features = false }

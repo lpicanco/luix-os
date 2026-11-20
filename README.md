@@ -14,51 +14,42 @@ It is a 64-bit operating system that supports both x86-64 and AArch64 architectu
 
 ## Development
 
-Install [mise](https://mise.jdx.dev), then run `mise install`. This installs the pinned
-Rust nightly from `rust-toolchain.toml`, the `x86_64-unknown-none` target, rustfmt, Clippy,
-and ShellCheck. That is enough for host tests.
+Install [mise](https://mise.jdx.dev) and a host C toolchain. Install QEMU to boot
+LuixOS or run guest tests.
 
-To build disk images and run the guest tests in QEMU, also install:
+- On macOS, install Xcode Command Line Tools, then run `brew install qemu`.
+- On Debian or Ubuntu, run `sudo apt install build-essential qemu-system-x86 ca-certificates`.
 
-- macOS: Xcode Command Line Tools, then `brew install gptfdisk mtools qemu coreutils`
-- Debian/Ubuntu: `sudo apt install build-essential gdisk mtools qemu-system-x86 coreutils curl ca-certificates tar`
+Use mise from the repository root.
 
 ```sh
 mise install
-mise run doctor    # check native tools
-mise run test:all  # host tests, then guest tests in QEMU
+mise run doctor    # Check installed tools
+mise run build     # Build the kernel and init
+mise run test:all  # Run host and guest tests
+mise run run       # Boot LuixOS in QEMU
 ```
 
-The first image build downloads Limine and OVMF from the `luix-os/limine` and
-`luix-os/edk2-nightly` forks at pinned commits and verifies their SHA-256.
-Downloads are cached in `.cache/luix/downloads/` and kept by `mise run clean`.
-For offline builds, place `limine.tar.gz` and `OVMF.fd` there yourself.
+The first boot or guest test run downloads the required boot files. Use
+`mise run setup` to download them in advance.
 
-Run a task with `mise run <task>`. `cargo run` and `cargo test` also work and boot QEMU.
-The old Make targets still work.
-
-| Task | Description |
+| Other task | Description |
 | --- | --- |
-| `doctor` | Check native build and test tools |
-| `setup` | Download and verify Limine and OVMF |
-| `check` | Type-check the kernel, userland, and test macros |
-| `build` | Build the kernel and init |
+| `check` | Type-check the kernel, userland, and host tools |
 | `image` | Create `target/images/luix-os.img` |
 | `image:test` | Create `target/images/luix-os-test.img` |
-| `run` | Boot with UEFI |
-| `run:bios` | Boot with BIOS |
+| `run:bios` | Boot in legacy BIOS mode (currently stops during ACPI initialization) |
 | `debug` | Boot with UEFI and wait for GDB on `localhost:1234` |
 | `test` | Run host tests |
 | `test:build` | Build the guest test kernel |
 | `test:qemu` | Build the test image and run guest tests in QEMU |
-| `test:all` | Run host and guest tests |
 | `fmt`, `fmt:check` | Format, or check formatting |
 | `lint` | Run Clippy and ShellCheck |
 | `ci` | Check formatting, lint, and run all tests |
 | `clean` | Remove build output and disk images |
 
-In the kernel, `#[test]` comes from `tools/test-macros`. Tests marked `#[test]` run on the
-host and in QEMU. Tests marked `#[test(target = "qemu")]` run only in QEMU.
+Kernel tests marked `#[test]` run on the host and in QEMU. Tests marked
+`#[test(target = "qemu")]` run only in QEMU.
 
 ## Roadmap
 

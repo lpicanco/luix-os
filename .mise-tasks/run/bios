@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #MISE description="Boot with BIOS"
-#MISE depends=["image"]
+#MISE depends=["image:bios"]
 set -euo pipefail
 # shellcheck source=../lib.sh
 source "$(dirname "${BASH_SOURCE[0]}")/../lib.sh"
 
-exec "${qemu[@]}" -m 2G -drive "file=$normal_image,format=raw"
+exec "${qemu[@]}" -m 2G -drive "file=$bios_image,format=raw"

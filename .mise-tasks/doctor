@@ -3,19 +3,10 @@
 set -u
 
 missing=0
-# Pass when any of the given commands exists.
-need() {
-    local tool
-    for tool in "$@"; do
-        command -v "$tool" >/dev/null && return
-    done
-    echo "Missing $(printf '%s or ' "$@" | sed 's/ or $//') (see README.md)" >&2
-    missing=1
-}
-
-for tool in cargo rustc cc curl tar sgdisk mcopy mmd mformat qemu-system-x86_64 shellcheck; do
-    need "$tool"
+for tool in cargo rustc cc qemu-system-x86_64 shellcheck; do
+    if ! command -v "$tool" >/dev/null; then
+        echo "Missing $tool (see README.md)" >&2
+        missing=1
+    fi
 done
-need timeout gtimeout
-need sha256sum shasum
 exit "$missing"

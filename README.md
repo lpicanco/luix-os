@@ -16,12 +16,12 @@ It is a 64-bit operating system that supports both x86-64 and AArch64 architectu
 
 Install [mise](https://mise.jdx.dev), then run `mise install`. This installs the pinned
 Rust nightly from `rust-toolchain.toml`, the `x86_64-unknown-none` target, rustfmt, Clippy,
-and ShellCheck. That is enough for host tests.
+and ShellCheck. A host C toolchain provides the linker for host tests and tools.
 
-To build disk images and run the guest tests in QEMU, also install:
+Install the host toolchain and QEMU to run the guest tests:
 
-- macOS: Xcode Command Line Tools, then `brew install gptfdisk mtools qemu coreutils`
-- Debian/Ubuntu: `sudo apt install build-essential gdisk mtools qemu-system-x86 coreutils curl ca-certificates tar`
+- macOS: Xcode Command Line Tools, then `brew install qemu`
+- Debian/Ubuntu: `sudo apt install build-essential qemu-system-x86 ca-certificates`
 
 ```sh
 mise install
@@ -29,10 +29,15 @@ mise run doctor    # check native tools
 mise run test:all  # host tests, then guest tests in QEMU
 ```
 
-The first image build downloads Limine and OVMF from the `luix-os/limine` and
-`luix-os/edk2-nightly` forks at pinned commits and verifies their SHA-256.
-Downloads are cached in `.cache/luix/downloads/` and kept by `mise run clean`.
-For offline builds, place `limine.tar.gz` and `OVMF.fd` there yourself.
+`cargo xtask` builds the disk images and supervises QEMU for guest tests. It fetches
+the prebuilt `BOOTX64.EFI` and `OVMF.fd` from the `luix-os/limine` and
+`luix-os/edk2-nightly` forks at the commits pinned in `tools/xtask/src/firmware.rs`.
+`mise run setup` fetches both in advance. The binaries and their license notices are
+verified using SHA-256 and cached in `.cache/luix/downloads/`. The cache supports
+offline reuse and is kept by `mise run clean`.
+
+`mise run run:bios` builds a separate BIOS image and compiles the Limine BIOS installer
+for that image.
 
 Run a task with `mise run <task>`. `cargo run` and `cargo test` also work and boot QEMU.
 The old Make targets still work.

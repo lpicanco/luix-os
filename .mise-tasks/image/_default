@@ -1,10 +1,6 @@
 #!/usr/bin/env bash
 #MISE description="Create the normal disk image"
-#MISE depends=["build", "setup:limine"]
+#MISE depends=["build"]
 #USAGE arg "[kernel]" help="Kernel executable (default: the debug build)"
 set -euo pipefail
-# shellcheck source=../lib.sh
-source "$(dirname "${BASH_SOURCE[0]}")/../lib.sh"
-
-build_image "$normal_image" 64 "${1:-$bin/kernel}"
-finish_image
+exec cargo xtask image "$@"

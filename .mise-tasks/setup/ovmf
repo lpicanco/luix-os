@@ -1,7 +1,0 @@
-#!/usr/bin/env bash
-#MISE description="Download and verify the pinned OVMF firmware"
-set -euo pipefail
-# shellcheck source=../lib.sh
-source "$(dirname "${BASH_SOURCE[0]}")/../lib.sh"
-
-download "https://raw.githubusercontent.com/luix-os/edk2-nightly/$ovmf_rev/bin/RELEASEX64_OVMF.fd" OVMF.fd "$ovmf_sha256"

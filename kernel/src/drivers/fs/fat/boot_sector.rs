@@ -101,20 +101,17 @@ mod tests {
         let gpt = GuidedPartitionTable::read_from_disk(controller.as_ref()).unwrap();
         let bs = Fat32BootSector::read_from_disk(&gpt.entry, controller.as_ref());
 
-        assert_eq!(bs.bios_parameter_block.boot_jump, [0xEB, 0x58, 0x90]);
-        assert_eq!(bs.bios_parameter_block.oem_identifier, *b"MTOO4043");
+        assert!(matches!(bs.bios_parameter_block.boot_jump[0], 0xEB | 0xE9));
 
         assert_eq!(bs.bios_parameter_block.bytes_per_sector(), 512);
         assert_eq!(bs.bios_parameter_block.sectors_per_cluster, 1);
         assert_eq!(bs.bios_parameter_block.fat_count, 2);
         assert_eq!(bs.bios_parameter_block.root_directories_count(), 0);
-        assert_eq!({ bs.bios_parameter_block.root_directories_count() }, 0);
         let partition_sectors = { gpt.entry.ending_lba } - { gpt.entry.starting_lba } + 1;
         assert_eq!(
             u64::from(bs.bios_parameter_block.large_sector_count()),
             partition_sectors
         );
-        assert_eq!(bs.sectors_per_fat(), 0x286);
 
         assert_eq!({ bs.root_cluster_number }, 2);
         assert_eq!(
@@ -127,6 +124,12 @@ mod tests {
         );
 
         assert_eq!(bs.root_dir_sectors(), 0);
-        assert_eq!(bs.first_data_sector(), 0x52A);
+        let root_cluster_sector = (bs.first_data_sector() + bs.root_cluster_number as usize) as u64;
+        let data_sectors = partition_sectors.checked_sub(root_cluster_sector).unwrap();
+        let fat_entries = u64::from(bs.sectors_per_fat())
+            * u64::from(bs.bios_parameter_block.bytes_per_sector())
+            / 4;
+        assert!(data_sectors >= 65_525);
+        assert!(fat_entries >= data_sectors + 2);
     }
 }

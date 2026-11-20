@@ -11,7 +11,15 @@ CARGO_TARGET_DIR = "{{config_root}}/target"
 
 [tasks.setup]
 description = "Download and verify Limine and OVMF"
-depends = ["setup:limine", "setup:ovmf"]
+run = "cargo xtask setup"
+
+[tasks."setup:limine"]
+description = "Download and verify the pinned Limine UEFI loader"
+run = "cargo xtask setup limine"
+
+[tasks."setup:ovmf"]
+description = "Download and verify the pinned OVMF firmware"
+run = "cargo xtask setup ovmf"
 
 [tasks."build:init"]
 hide = true
@@ -30,12 +38,31 @@ run = "cargo build --locked -p kernel"
 
 [tasks.test]
 description = "Run host tests"
-run = "cargo test --locked -p kernel --lib --target host-tuple"
+run = [
+    "cargo test --locked -p kernel --lib --target host-tuple",
+    "cargo test --locked --manifest-path tools/xtask/Cargo.toml --target host-tuple",
+]
 
 [tasks."test:build"]
 description = "Build the guest test kernel without booting it"
 depends = ["build:init", "build:fixtures"]
 run = """cargo test --locked -p kernel --lib --config 'target.x86_64-unknown-none.runner=".mise-tasks/test/stage"'"""
+
+[tasks."image:test"]
+description = "Create the test disk image"
+depends = ["test:build"]
+run = "cargo xtask image --test"
+
+[tasks."image:bios"]
+hide = true
+description = "Create the BIOS disk image"
+depends = ["build"]
+run = "cargo xtask image --bios"
+
+[tasks."test:qemu"]
+description = "Build the test image and run guest tests in QEMU"
+depends = ["image:test"]
+run = "cargo xtask test-qemu"
 
 [tasks."test:all"]
 description = "Run host and guest tests"
@@ -43,18 +70,19 @@ depends = ["test", "test:qemu"]
 
 [tasks.fmt]
 description = "Format the workspace"
-run = "cargo fmt --all"
+run = ["cargo fmt --all", "cargo fmt --manifest-path tools/xtask/Cargo.toml"]
 
 [tasks."fmt:check"]
 description = "Check workspace formatting"
-run = "cargo fmt --all --check"
+run = ["cargo fmt --all --check", "cargo fmt --manifest-path tools/xtask/Cargo.toml --check"]
 
 [tasks.check]
-description = "Type-check the kernel, userland, and test macros"
+description = "Type-check the kernel, userland, and host tools"
 run = [
     "cargo check --locked -p kernel -p init -p process-test",
     "cargo check --locked -p kernel --lib --profile test --target host-tuple",
     "cargo check --locked -p test-macros --target host-tuple",
+    "cargo check --locked --manifest-path tools/xtask/Cargo.toml --target host-tuple",
 ]
 
 [tasks.lint]
@@ -63,6 +91,7 @@ run = [
     "cargo clippy --locked -p kernel -p init -p process-test",
     "cargo clippy --locked -p kernel --lib --profile test --target host-tuple",
     "cargo clippy --locked -p test-macros --target host-tuple",
+    "cargo clippy --locked --manifest-path tools/xtask/Cargo.toml --target host-tuple",
     "find .mise-tasks -type f -exec shellcheck -x {} +",
 ]
 

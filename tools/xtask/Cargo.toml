@@ -15,3 +15,6 @@ sha2 = "0.10"
 tempfile = "3"
 ureq = { version = "3", default-features = false, features = ["rustls", "platform-verifier"] }
 uuid = { version = "1", features = ["v4"] }
+
+[target.'cfg(unix)'.dependencies]
+signal-hook = { version = "0.3", default-features = false }

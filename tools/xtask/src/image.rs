@@ -38,7 +38,7 @@ pub fn write(
     let options = FormatVolumeOptions::new()
         .fat_type(FatType::Fat32)
         .bytes_per_sector(SECTOR_BYTES)
-        // The kernel FAT reader currently assumes one sector per cluster.
+        // One sector per cluster keeps the 42 MiB test volume above FAT32's minimum cluster count.
         .bytes_per_cluster(u32::from(SECTOR_BYTES))
         .fats(2);
     fatfs::format_volume(&mut partition, options).context("format EFI partition as FAT32")?;

@@ -2,7 +2,6 @@ use alloc::boxed::Box;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::cmp::min;
-use core::mem::MaybeUninit;
 
 use crate::drivers::fs::fat::boot_sector::Fat32BootSector;
 use crate::drivers::fs::fat::directory::DirectoryEntry;
@@ -41,11 +40,6 @@ impl Fat32FileSystem {
 
     pub fn stat(&self, path: &Path) -> Option<DirectoryEntry> {
         self.find_entry(path)
-    }
-
-    fn read_cluster(&self, cluster: usize, buffer: &mut [MaybeUninit<u8>]) -> usize {
-        let sector = self.fat_area.start_sector + self.fat_area.first_data_sector + cluster;
-        self.block_device.read_block(sector, buffer)
     }
 
     fn find_entry(&self, path: &Path) -> Option<DirectoryEntry> {
@@ -89,26 +83,29 @@ impl FileSystem for Fat32FileSystem {
             return Ok(0);
         }
 
-        let sector_size = self.fat_area.sector_size;
-        let mut buffer = Box::<[u8; 512]>::new_uninit();
-        if sector_size != buffer.as_bytes_mut().len() {
+        let bytes_per_cluster = self.fat_area.bytes_per_cluster();
+        if bytes_per_cluster == 0 {
             return Err(Error::Io);
         }
-        let mut sector_offset = offset % sector_size;
+        let mut cluster_offset = offset % bytes_per_cluster;
         let mut copied = 0;
+        let mut buffer = Vec::new();
         let clusters = self.fat_area.cluster_chain_iter(node.inode.as_u64() as u32);
-        for cluster in clusters.skip(offset / sector_size) {
-            if self.read_cluster(cluster as usize, buffer.as_bytes_mut()) != sector_size {
+        for cluster in clusters.skip(offset / bytes_per_cluster) {
+            if !self
+                .fat_area
+                .read_cluster(cluster, &mut buffer, self.block_device.as_ref())
+            {
                 return Err(Error::Io);
             }
-            let bytes = unsafe { buffer.assume_init_ref() };
-            let len = min(count - copied, sector_size - sector_offset);
-            data[copied..copied + len].copy_from_slice(&bytes[sector_offset..sector_offset + len]);
+            let len = min(count - copied, bytes_per_cluster - cluster_offset);
+            data[copied..copied + len]
+                .copy_from_slice(&buffer[cluster_offset..cluster_offset + len]);
             copied += len;
             if copied == count {
                 return Ok(copied);
             }
-            sector_offset = 0;
+            cluster_offset = 0;
         }
         Err(Error::Io)
     }
@@ -118,6 +115,7 @@ impl FileSystem for Fat32FileSystem {
 struct FatArea {
     start_sector: usize,
     sector_size: usize,
+    sectors_per_cluster: usize,
     fat_start_sector: usize,
     sectors_per_fat: usize,
     first_data_sector: usize,
@@ -133,6 +131,7 @@ impl FatArea {
         let mut fat_area = FatArea {
             start_sector: partition.starting_lba as usize,
             sector_size: boot_sector.bios_parameter_block.bytes_per_sector() as usize,
+            sectors_per_cluster: boot_sector.bios_parameter_block.sectors_per_cluster as usize,
             fat_start_sector: boot_sector.bios_parameter_block.reserved_sectors() as usize,
             sectors_per_fat: boot_sector.sectors_per_fat() as usize,
             first_data_sector: boot_sector.first_data_sector(),
@@ -142,7 +141,47 @@ impl FatArea {
         fat_area
     }
 
-    pub fn cluster_chain_iter<'a>(&self, cluster: u32) -> FatClusterIterator {
+    fn bytes_per_cluster(&self) -> usize {
+        self.sector_size * self.sectors_per_cluster
+    }
+
+    /// Absolute device sector where `cluster` starts. Data clusters are numbered from 2.
+    fn cluster_start_sector(&self, cluster: u32) -> usize {
+        self.start_sector
+            + self.first_data_sector
+            + (cluster as usize - 2) * self.sectors_per_cluster
+    }
+
+    /// Reads every sector of `cluster` into `buffer`, replacing its contents.
+    /// Returns false on an I/O error or an invalid cluster number.
+    fn read_cluster(
+        &self,
+        cluster: u32,
+        buffer: &mut Vec<u8>,
+        block_device: &dyn BlockDevice,
+    ) -> bool {
+        let bytes_per_cluster = self.bytes_per_cluster();
+        buffer.clear();
+        if cluster < 2 || bytes_per_cluster == 0 {
+            return false;
+        }
+        buffer.reserve(bytes_per_cluster);
+
+        // One block read per sector: the block device does not yet handle
+        // transfers that cross a page boundary.
+        let first_sector = self.cluster_start_sector(cluster);
+        let spare = &mut buffer.spare_capacity_mut()[..bytes_per_cluster];
+        for (i, sector) in spare.chunks_exact_mut(self.sector_size).enumerate() {
+            if block_device.read_block(first_sector + i, sector) != self.sector_size {
+                return false;
+            }
+        }
+        // SAFETY: every byte in 0..bytes_per_cluster was written by read_block above.
+        unsafe { buffer.set_len(bytes_per_cluster) };
+        true
+    }
+
+    pub fn cluster_chain_iter(&self, cluster: u32) -> FatClusterIterator<'_> {
         FatClusterIterator {
             current_cluster: cluster,
             fat: &self.fat,
@@ -191,34 +230,27 @@ impl<'a> Iterator for FatClusterIterator<'a> {
 }
 
 struct DirectoryWalker<'a> {
-    sector: Vec<u8>,
-    sector_offset: usize,
+    cluster_data: Vec<u8>,
+    cluster_offset: usize,
     fat_area: &'a FatArea,
     cluster_iter: FatClusterIterator<'a>,
     block_device: Arc<dyn BlockDevice>,
 }
 
 impl DirectoryWalker<'_> {
-    pub fn new<'a>(
+    pub fn new(
         cluster: u32,
-        fat_area: &'a FatArea,
+        fat_area: &FatArea,
         block_device: Arc<dyn BlockDevice>,
-    ) -> DirectoryWalker<'a> {
+    ) -> DirectoryWalker<'_> {
         let cluster_iter = fat_area.cluster_chain_iter(cluster);
         DirectoryWalker {
-            sector: Vec::new(),
-            sector_offset: fat_area.sector_size,
+            cluster_data: Vec::new(),
+            cluster_offset: 0,
             fat_area,
             cluster_iter,
             block_device,
         }
-    }
-
-    fn read_sector(&self, sector: usize) -> Vec<u8> {
-        let sector = self.fat_area.start_sector + sector + self.fat_area.first_data_sector;
-        let mut buffer = Box::<[u8; 512]>::new_uninit();
-        self.block_device.read_block(sector, buffer.as_bytes_mut());
-        unsafe { *buffer.assume_init() }.to_vec()
     }
 }
 
@@ -226,30 +258,152 @@ impl Iterator for DirectoryWalker<'_> {
     type Item = DirectoryEntry;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.sector_offset >= self.fat_area.sector_size {
-            match self.cluster_iter.next() {
-                Some(cluster) => {
-                    self.sector = self.read_sector(cluster as usize);
-                    self.sector_offset = 0;
-                }
-                None => {
-                    return None;
-                }
+        if self.cluster_offset + 32 > self.cluster_data.len() {
+            let cluster = self.cluster_iter.next()?;
+            if !self.fat_area.read_cluster(
+                cluster,
+                &mut self.cluster_data,
+                self.block_device.as_ref(),
+            ) {
+                return None;
             }
+            self.cluster_offset = 0;
         }
 
-        let dir_entry = DirectoryEntry::from_sector(&self.sector, self.sector_offset);
-        self.sector_offset += 32;
+        let dir_entry = DirectoryEntry::from_sector(&self.cluster_data, self.cluster_offset);
+        self.cluster_offset += 32;
         dir_entry
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use alloc::vec;
+    use core::mem::MaybeUninit;
+
     use crate::drivers::fs::gpt::GuidedPartitionTable;
     use crate::drivers::nvme::NVME_CONTROLLERS;
 
     use super::*;
+
+    const RAM_SECTOR: usize = 512;
+    const RAM_SECTORS_PER_CLUSTER: usize = 4;
+    const RAM_CLUSTER: usize = RAM_SECTOR * RAM_SECTORS_PER_CLUSTER;
+    // One reserved sector and one FAT sector, so cluster 2 starts at sector 2.
+    const RAM_FIRST_DATA_SECTOR: usize = 2;
+    // Entries per sector; the test file's entry sits in the root cluster's second sector.
+    const RAM_FILLER_ENTRIES: usize = RAM_SECTOR / 32;
+    const RAM_FILE_SIZE: usize = RAM_CLUSTER + 100;
+
+    struct RamDisk(Vec<u8>);
+
+    impl BlockDevice for RamDisk {
+        fn read_block(&self, sector: usize, buffer: &mut [MaybeUninit<u8>]) -> usize {
+            let start = sector * RAM_SECTOR;
+            let Some(source) = self.0.get(start..start + buffer.len()) else {
+                return 0;
+            };
+            for (dest, byte) in buffer.iter_mut().zip(source) {
+                dest.write(*byte);
+            }
+            buffer.len()
+        }
+
+        fn write_block(&self, _sector: usize, _buffer: &[u8]) -> usize {
+            0
+        }
+    }
+
+    fn ram_cluster_offset(cluster: usize) -> usize {
+        (RAM_FIRST_DATA_SECTOR + (cluster - 2) * RAM_SECTORS_PER_CLUSTER) * RAM_SECTOR
+    }
+
+    fn ram_file_byte(offset: usize) -> u8 {
+        (offset % 251) as u8
+    }
+
+    fn write_dir_entry(disk: &mut [u8], offset: usize, name: &[u8; 11], cluster: u16, size: u32) {
+        let entry = &mut disk[offset..offset + 32];
+        entry[0..11].copy_from_slice(name);
+        entry[11] = 0x20;
+        entry[26..28].copy_from_slice(&cluster.to_le_bytes());
+        entry[28..32].copy_from_slice(&size.to_le_bytes());
+    }
+
+    /// A FAT32 volume with four sectors per cluster:
+    /// cluster 2 is the root directory, clusters 3 -> 4 hold DATA.BIN.
+    fn ram_fat32_with_multi_sector_clusters() -> Fat32FileSystem {
+        let mut disk = vec![0u8; ram_cluster_offset(5)];
+
+        disk[11..13].copy_from_slice(&(RAM_SECTOR as u16).to_le_bytes());
+        disk[13] = RAM_SECTORS_PER_CLUSTER as u8;
+        disk[14..16].copy_from_slice(&1u16.to_le_bytes()); // reserved sectors
+        disk[16] = 1; // FAT count
+        disk[36..40].copy_from_slice(&1u32.to_le_bytes()); // sectors per FAT
+        disk[44..48].copy_from_slice(&2u32.to_le_bytes()); // root cluster
+
+        let fat = RAM_SECTOR;
+        for (cluster, next) in [(2, 0x0FFF_FFFFu32), (3, 4), (4, 0x0FFF_FFFF)] {
+            disk[fat + cluster * 4..fat + cluster * 4 + 4].copy_from_slice(&next.to_le_bytes());
+        }
+
+        let root = ram_cluster_offset(2);
+        for i in 0..RAM_FILLER_ENTRIES {
+            write_dir_entry(&mut disk, root + i * 32, b"FILL    TXT", 0, 0);
+        }
+        write_dir_entry(
+            &mut disk,
+            root + RAM_FILLER_ENTRIES * 32,
+            b"DATA    BIN",
+            3,
+            RAM_FILE_SIZE as u32,
+        );
+
+        let data = ram_cluster_offset(3);
+        for i in 0..RAM_FILE_SIZE {
+            disk[data + i] = ram_file_byte(i);
+        }
+
+        // SAFETY: GptPartitionEntry is plain integers; all-zero is valid.
+        let mut partition: GptPartitionEntry = unsafe { core::mem::zeroed() };
+        partition.starting_lba = 0;
+        Fat32FileSystem::read_from_disk(partition, Arc::new(RamDisk(disk)))
+    }
+
+    #[test]
+    fn test_multi_sector_cluster_directory_walk() {
+        let fs = ram_fat32_with_multi_sector_clusters();
+        let entry = fs.stat(&Path::new("/DATA.BIN").unwrap()).unwrap();
+        assert_eq!(entry.cluster(), 3);
+        assert_eq!(entry.size as usize, RAM_FILE_SIZE);
+    }
+
+    #[test]
+    fn test_multi_sector_cluster_read_at() {
+        let fs = ram_fat32_with_multi_sector_clusters();
+        let node = fs.open(&Path::new("/DATA.BIN").unwrap()).unwrap();
+
+        let mut all = vec![0u8; RAM_FILE_SIZE];
+        assert_eq!(fs.read_at(&node, 0, &mut all), Ok(RAM_FILE_SIZE));
+        assert!(all
+            .iter()
+            .enumerate()
+            .all(|(i, byte)| *byte == ram_file_byte(i)));
+
+        // Within the first cluster, past its first sector, and across the cluster boundary.
+        for offset in [600, RAM_CLUSTER - 8] {
+            let mut chunk = [0u8; 16];
+            assert_eq!(fs.read_at(&node, offset, &mut chunk), Ok(16));
+            assert!(chunk
+                .iter()
+                .enumerate()
+                .all(|(i, byte)| *byte == ram_file_byte(offset + i)));
+        }
+
+        let mut tail = [0u8; 200];
+        assert_eq!(fs.read_at(&node, RAM_CLUSTER + 50, &mut tail), Ok(50));
+        assert_eq!(fs.read_at(&node, RAM_FILE_SIZE, &mut tail), Ok(0));
+    }
 
     #[test(target = "qemu")]
     fn test_fat_area_cluster_chain_iter() {

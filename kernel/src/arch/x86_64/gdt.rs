@@ -103,13 +103,13 @@ impl GlobalDescriptorTable {
         let tss_ptr = tss as u64;
         let mut low_descriptor = 1u64 << 47;
 
-        low_descriptor.set_bits(16..40, tss_ptr.get_bits(0..24));
-        low_descriptor.set_bits(56..64, tss_ptr.get_bits(24..32));
-        low_descriptor.set_bits(0..16, (size_of::<TaskStateSegment>() - 1) as u64);
-        low_descriptor.set_bits(40..44, 0b1001);
+        low_descriptor.write_bits(16..40, tss_ptr.read_bits(0..24));
+        low_descriptor.write_bits(56..64, tss_ptr.read_bits(24..32));
+        low_descriptor.write_bits(0..16, (size_of::<TaskStateSegment>() - 1) as u64);
+        low_descriptor.write_bits(40..44, 0b1001);
 
         let mut high_descriptor = 0;
-        high_descriptor.set_bits(0..32, tss_ptr.get_bits(32..64));
+        high_descriptor.write_bits(0..32, tss_ptr.read_bits(32..64));
 
         let segment = self.add_entry(low_descriptor, PrivilegeLevel::Ring0);
         self.add_entry(high_descriptor, PrivilegeLevel::Ring0);

@@ -68,13 +68,13 @@ pub struct PciDevice {
 impl PciDevice {
     pub fn enable_bus_mastering(&self) {
         let mut command = self.read(0x04);
-        command.set_bit(2, true);
+        command.write_bit(2, true);
         self.write(0x04, command);
     }
 
     pub fn enable_mmio(&self) {
         let mut command = self.read(0x04);
-        command.set_bit(1, true);
+        command.write_bit(1, true);
         self.write(0x04, command);
     }
 
@@ -110,7 +110,7 @@ impl PciDevice {
         let mut bar_lower = self.bars[index];
 
         // Determine the type of the BAR(32-bit or 64-bit). If bits 2 and 1 are equal to 0x0, then it's a 32-bit address. 0x2 means 64-bit address.
-        let bar_type = bar_lower.get_bits(1..3);
+        let bar_type = bar_lower.read_bits(1..3);
 
         // Clear the last 4 bits from the lower bar since they are not part of the address
         bar_lower &= 0xFFFF_FFF0;

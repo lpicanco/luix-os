@@ -60,7 +60,7 @@ impl InterruptDescriptorTable {
     }
 
     pub fn set_privilege_level(&mut self, index: usize, privilege_level: PrivilegeLevel) {
-        self.entries[index].options.0.set_bits(13..15, privilege_level as u16);
+        self.entries[index].options.0.write_bits(13..15, privilege_level as u16);
     }
 }
 

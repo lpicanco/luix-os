@@ -117,11 +117,11 @@ pub struct NvmeCompletion {
 
 impl NvmeCompletion {
     pub fn status(&self) -> u16 {
-        self.phase_status.get_bits(1..16)
+        self.phase_status.read_bits(1..16)
     }
 
     pub fn phase(&self) -> bool {
-        self.phase_status.get_bit(0)
+        self.phase_status.read_bit(0)
     }
 
     pub fn is_success(&self) -> bool {
@@ -129,7 +129,7 @@ impl NvmeCompletion {
     }
 
     pub fn status_code(&self) -> u16 {
-        self.phase_status.get_bits(1..10)
+        self.phase_status.read_bits(1..10)
     }
 }
 

@@ -49,8 +49,7 @@ bits_number_impl! {u8 u16 i32 u32 u64}
 mod tests {
     use super::*;
 
-    #[test_case]
-    fn test_get_bits() {
+    #[test]
         let value = 0b1010u32;
         assert_eq!(value.get_bits(0..1), 0b0);
         assert_eq!(value.get_bits(1..2), 0b1);
@@ -70,10 +69,11 @@ mod tests {
         assert_eq!(capabilities.get_bits(0..15), 2047);
     }
 
-    #[test_case]
+    #[luix::test]
     fn test_get_bit() {
         assert_eq!(0x4018200F0107FFu64.get_bit(16), true);
         assert_eq!(0x4018200F0107FFu64.get_bit(0), true);
+    #[test]
 
         let value = 0b1010_0000u8;
         assert_eq!(value.get_bit(0), false);
@@ -82,8 +82,9 @@ mod tests {
         assert_eq!(value.get_bit(7), true);
     }
 
-    #[test_case]
+    #[luix::test]
     fn test_set_bit() {
+    #[test]
         let mut value = 0u8;
         value.set_bit(0, true);
         assert_eq!(value, 1);
@@ -95,8 +96,9 @@ mod tests {
         assert_eq!(value, 0);
     }
 
-    #[test_case]
+    #[luix::test]
     fn test_set_bits() {
+    #[test]
         let mut value = 0u8;
         value.set_bits(0..2, 0b10);
         assert_eq!(value, 0b10);

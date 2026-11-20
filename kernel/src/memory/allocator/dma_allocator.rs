@@ -91,7 +91,7 @@ mod tests {
         field2: u64,
         field3: [u8; 1024],
     }
-    #[test_case]
+    #[test(target = "qemu")]
     fn test_dma_allocator() {
         let block = Dma::<Block>::zeroed();
         assert_eq!(block.field1, 0);
@@ -99,7 +99,7 @@ mod tests {
         assert_eq!(block.field3.iter().all(|&x| x == 0), true);
     }
 
-    #[test_case]
+    #[test(target = "qemu")]
     fn test_dma_dealloc() {
         let block = Dma::<Block>::zeroed();
         let addr = block.addr();
@@ -107,7 +107,7 @@ mod tests {
         assert_eq!(addr, Dma::<Block>::zeroed().addr());
     }
 
-    #[test_case]
+    #[test(target = "qemu")]
     fn test_dma_dealloc_heavy() {
         let block = Dma::<[u8; 0x101_000]>::zeroed();
         let addr = block.addr();
@@ -118,7 +118,7 @@ mod tests {
         assert_eq!(addr.as_u64(), block2.addr().as_u64());
     }
 
-    #[test_case]
+    #[test(target = "qemu")]
     fn test_dma_allocator_zeroed_slice() {
         let block = Dma::<Block>::new_zeroed_slice(5).assume_init();
         assert_eq!(block[0].field1, 0);
@@ -126,7 +126,7 @@ mod tests {
         assert_eq!(block[4].field3.iter().all(|&x| x == 0), true);
     }
 
-    #[test_case]
+    #[test(target = "qemu")]
     fn test_dma_allocator_zeroed_slice_dealloc() {
         // Allocate one block of 8 elements
         let addr = {

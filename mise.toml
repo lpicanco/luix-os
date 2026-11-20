@@ -1,0 +1,75 @@
+# Cargo commands and task groups live here. Tasks with shell logic are files in .mise-tasks/.
+
+[settings]
+idiomatic_version_file_enable_tools = ["rust"]
+
+[tools]
+shellcheck = "0.10.0"
+
+[env]
+CARGO_TARGET_DIR = "{{config_root}}/target"
+
+[tasks.setup]
+description = "Download and verify Limine and OVMF"
+depends = ["setup:limine", "setup:ovmf"]
+
+[tasks."build:init"]
+hide = true
+env.RUSTFLAGS = "-C link-args=-Tuserland/linker.ld"
+run = "cargo build --locked -p init"
+
+[tasks."build:fixtures"]
+hide = true
+env.RUSTFLAGS = "-C link-args=-Tuserland/linker.ld"
+run = "cargo build --locked -p process-test"
+
+[tasks.build]
+description = "Build the kernel and init"
+depends = ["build:init"]
+run = "cargo build --locked -p kernel"
+
+[tasks.test]
+description = "Run host tests"
+run = "cargo test --locked -p kernel --lib --target host-tuple"
+
+[tasks."test:build"]
+description = "Build the guest test kernel without booting it"
+depends = ["build:init", "build:fixtures"]
+run = """cargo test --locked -p kernel --lib --config 'target.x86_64-unknown-none.runner=".mise-tasks/test/stage"'"""
+
+[tasks."test:all"]
+description = "Run host and guest tests"
+depends = ["test", "test:qemu"]
+
+[tasks.fmt]
+description = "Format the workspace"
+run = "cargo fmt --all"
+
+[tasks."fmt:check"]
+description = "Check workspace formatting"
+run = "cargo fmt --all --check"
+
+[tasks.check]
+description = "Type-check the kernel, userland, and test macros"
+run = [
+    "cargo check --locked -p kernel -p init -p process-test",
+    "cargo check --locked -p kernel --lib --profile test --target host-tuple",
+    "cargo check --locked -p test-macros --target host-tuple",
+]
+
+[tasks.lint]
+description = "Run Clippy and ShellCheck"
+run = [
+    "cargo clippy --locked -p kernel -p init -p process-test",
+    "cargo clippy --locked -p kernel --lib --profile test --target host-tuple",
+    "cargo clippy --locked -p test-macros --target host-tuple",
+    "find .mise-tasks -type f -exec shellcheck -x {} +",
+]
+
+[tasks.clean]
+description = "Remove build output and disk images"
+run = "cargo clean"
+
+[tasks.ci]
+description = "Check formatting, lint, and run all tests"
+depends = ["fmt:check", "lint", "test:all"]

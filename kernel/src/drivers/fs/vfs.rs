@@ -69,7 +69,7 @@ impl File {
 mod tests {
     use super::*;
 
-    #[test_case]
+    #[test(target = "qemu")]
     fn test_read_init_from_root() {
         let file = open("/boot/init").unwrap();
         let mut magic = [0; 4];
@@ -77,7 +77,7 @@ mod tests {
         assert_eq!(&magic, b"\x7fELF");
     }
 
-    #[test_case]
+    #[test(target = "qemu")]
     fn test_open_errors() {
         assert_eq!(open("boot/init").err(), Some(Error::InvalidPath));
         assert_eq!(open("/boot/MISSING.TST").err(), Some(Error::NotFound));
@@ -86,7 +86,7 @@ mod tests {
         assert_eq!(open("/boot/init/child").err(), Some(Error::NotFound));
     }
 
-    #[test_case]
+    #[test(target = "qemu")]
     fn test_read_offsets_and_eof() {
         let kernel = open("/boot/kernel").unwrap();
         let mut prefix = [0; 1050];

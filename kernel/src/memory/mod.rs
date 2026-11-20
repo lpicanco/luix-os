@@ -47,12 +47,12 @@ mod tests {
     use crate::memory::allocator::FRAME_ALLOCATOR;
     use crate::memory::MEMORY_MAPPER;
 
-    #[test_case]
+    #[test(target = "qemu")]
     fn test_frame_allocator_initialized() {
         assert!(FRAME_ALLOCATOR.is_completed());
     }
 
-    #[test_case]
+    #[test(target = "qemu")]
     fn test_memory_mapper_initialized() {
         assert!(MEMORY_MAPPER.is_completed());
     }

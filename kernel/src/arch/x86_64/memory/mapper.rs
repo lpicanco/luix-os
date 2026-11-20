@@ -168,7 +168,7 @@ mod tests {
 
     use super::*;
 
-    #[test_case]
+    #[test(target = "qemu")]
     fn test_translate_addr() {
         let mapper = unsafe { MEMORY_MAPPER.get_unchecked() };
         let phys = mapper.translate_addr(mapper.physical_memory_offset);
@@ -187,7 +187,7 @@ mod tests {
         assert_eq!(phys, None);
     }
 
-    #[test_case]
+    #[test(target = "qemu")]
     fn test_map_page() {
         let mapper = unsafe { MEMORY_MAPPER.get_unchecked() };
 
@@ -206,7 +206,7 @@ mod tests {
         assert_eq!(phys, Some(frame.start_address));
     }
 
-    #[test_case]
+    #[test(target = "qemu")]
     fn test_unmap_page() {
         let mapper = unsafe { MEMORY_MAPPER.get_unchecked() };
 

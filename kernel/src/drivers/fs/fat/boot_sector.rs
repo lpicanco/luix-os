@@ -95,7 +95,7 @@ mod tests {
 
     use super::*;
 
-    #[test_case]
+    #[test(target = "qemu")]
     fn test_boot_sector() {
         let controller = &NVME_CONTROLLERS.read()[0];
         let gpt = GuidedPartitionTable::read_from_disk(controller.as_ref()).unwrap();
@@ -109,7 +109,8 @@ mod tests {
         assert_eq!(bs.bios_parameter_block.fat_count, 2);
         assert_eq!(bs.bios_parameter_block.root_directories_count(), 0);
         assert_eq!({ bs.bios_parameter_block.root_directories_count() }, 0);
-        assert_eq!({ bs.bios_parameter_block.large_sector_count() }, 0x14800);
+        let partition_sectors = { gpt.entry.ending_lba } - { gpt.entry.starting_lba } + 1;
+        assert_eq!(u64::from(bs.bios_parameter_block.large_sector_count()), partition_sectors);
         assert_eq!(bs.sectors_per_fat(), 0x286);
 
         assert_eq!({ bs.root_cluster_number }, 2);

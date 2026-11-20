@@ -185,14 +185,14 @@ fn load() {
 mod tests {
     use super::*;
 
-    #[test_case]
+    #[test(target = "qemu")]
     fn test_gdt_initialized() {
         assert!(GDT.is_completed());
         let gdt = GDT.get().unwrap();
         assert_eq!(gdt.next_free, 7);
     }
 
-    #[test_case]
+    #[test(target = "qemu")]
     fn test_gdt_selectors_initialized() {
         assert!(SELECTORS.is_completed());
         assert!(TSS.is_completed());

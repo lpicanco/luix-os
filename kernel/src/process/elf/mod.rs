@@ -118,7 +118,7 @@ mod tests {
 
     use super::*;
 
-    #[test_case]
+    #[test(target = "qemu")]
     fn test_load_elf() {
         let file = vfs::open("/boot/kernel").unwrap();
         let mut buffer = vec![0; file.len()];

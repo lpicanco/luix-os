@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+#MISE description="Copy a guest test executable to the path image:test reads"
+#MISE hide=true
+#USAGE arg "<exe>" help="Test executable built by Cargo"
+# test:build uses this file directly as the Cargo runner.
+set -euo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../lib.sh"
+
+dest=$bin/kernel-test
+tmp=$(mktemp "$dest.XXXXXX")
+trap 'rm -f "$tmp"' EXIT
+cp "${1:?expected the test executable}" "$tmp"
+chmod 755 "$tmp"
+mv -f "$tmp" "$dest"

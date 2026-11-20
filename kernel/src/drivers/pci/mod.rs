@@ -214,7 +214,7 @@ mod tests {
 
     use super::*;
 
-    #[test_case]
+    #[test(target = "qemu")]
     fn test_pci_scanner() {
         let mut scanner = PciScanner::new();
         scanner.scan_devices();
@@ -227,7 +227,7 @@ mod tests {
         );
     }
 
-    #[test_case]
+    #[test(target = "qemu")]
     fn test_pci_driver() {
         let driver = pci_device!();
         assert_ne!(driver.devices().len(), 0);

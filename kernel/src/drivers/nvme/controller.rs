@@ -402,7 +402,7 @@ mod tests {
 
     use super::*;
 
-    #[test_case]
+    #[test(target = "qemu")]
     fn test_identity_controller() {
         let controller = &NVME_CONTROLLERS.read()[0];
         let identify = controller.identify_controller();
@@ -410,7 +410,7 @@ mod tests {
         assert_eq!(identify.serial_number.as_str(), "feedcafe");
     }
 
-    #[test_case]
+    #[test(target = "qemu")]
     fn test_namespace_identified() {
         let controller = &NVME_CONTROLLERS.read()[0];
         let namespaces = &controller.namespaces;
@@ -421,14 +421,14 @@ mod tests {
         assert_eq!(namespaces[0].blocks, 86016);
     }
 
-    #[test_case]
+    #[test(target = "qemu")]
     fn test_io_queues_created() {
         let controller = &NVME_CONTROLLERS.read()[0];
         assert_eq!(controller.io_queue.lock().queue_group_id, 1);
         assert_eq!(controller.io_queue.lock().queue_size, NVME_QUEUE_SIZE);
     }
 
-    #[test_case]
+    #[test(target = "qemu")]
     fn test_read_block() {
         struct GptHeader {
             signature: [u8; 8],
@@ -444,7 +444,7 @@ mod tests {
         assert_eq!(read, 12);
     }
 
-    #[test_case]
+    #[test(target = "qemu")]
     fn test_write_block() {
         struct PartitionTable {
             type_guid: [u8; 16],

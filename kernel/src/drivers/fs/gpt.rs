@@ -26,7 +26,7 @@ pub struct GptPartitionEntry {
     partition_type_guid: [u8; 16],
     unique_partition_guid: [u8; 16],
     pub starting_lba: u64,
-    ending_lba: u64,
+    pub ending_lba: u64,
     attributes: u64,
     partition_name: [u16; 36],
 }
@@ -84,7 +84,7 @@ mod tests {
 
     use super::*;
 
-    #[test_case]
+    #[test(target = "qemu")]
     fn test_read_from_disk() {
         let controller = &NVME_CONTROLLERS.read()[0];
         let gpt = GuidedPartitionTable::read_from_disk(controller.as_ref()).unwrap();

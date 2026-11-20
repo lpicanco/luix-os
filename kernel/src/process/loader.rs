@@ -112,7 +112,7 @@ mod tests {
 
     use super::*;
 
-    #[test_case]
+    #[test(target = "qemu")]
     fn test_spawn_exit_and_resume() {
         let missing = "/boot/MISSING.TST";
         assert_eq!(

@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+#MISE description="Boot with UEFI"
+#MISE depends=["image", "setup:ovmf"]
+set -euo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../lib.sh"
+
+exec "${qemu_uefi[@]}" -drive "$(nvme_drive "$normal_image")"

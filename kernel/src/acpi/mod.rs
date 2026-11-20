@@ -2,10 +2,10 @@ use spin::Once;
 
 use rsdp::Rsdp;
 
-use crate::{println, trace};
 use crate::acpi::madt::Madt;
 use crate::acpi::rsdt::Rsdt;
 use crate::acpi::sdt::Signature;
+use crate::{println, trace};
 
 pub(crate) mod madt;
 mod rsdp;

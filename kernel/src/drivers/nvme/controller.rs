@@ -160,6 +160,9 @@ impl NvmeController {
             .collect()
     }
 
+    // The registers are device memory.
+    // TODO: replace with volatile accessors.
+    #[allow(clippy::mut_from_ref)]
     fn get_registers(&self) -> &mut NvmeRegisters {
         unsafe { &mut *self.base_address.as_mut_ptr() }
     }
@@ -206,15 +209,15 @@ impl BlockDevice for NvmeController {
 pub struct ControllerStatus(u32);
 impl ControllerStatus {
     pub(crate) fn is_ready(&self) -> bool {
-        self.0.get_bit(0)
+        self.0.read_bit(0)
     }
 
     pub(crate) fn controller_fatal_status(&self) -> bool {
-        self.0.get_bit(1)
+        self.0.read_bit(1)
     }
 
     fn shutdown_status(&self) -> u8 {
-        self.0.get_bits(2..4) as u8
+        self.0.read_bits(2..4) as u8
     }
 }
 
@@ -241,34 +244,34 @@ pub enum CommandSetsSupported {
 pub struct Capabilities(u64);
 impl Capabilities {
     pub fn max_queue_entries(&self) -> u16 {
-        self.0.get_bits(0..16) as u16
+        self.0.read_bits(0..16) as u16
     }
 
     fn contiguous_queues_required(&self) -> bool {
-        self.0.get_bit(16)
+        self.0.read_bit(16)
     }
 
     fn doorbell_stride(&self) -> u16 {
-        self.0.get_bits(32..36) as u16
+        self.0.read_bits(32..36) as u16
     }
 
     pub fn command_sets_supported(&self) -> CommandSetsSupported {
-        let sets = self.0.get_bits(37..45) as u8;
+        let sets = self.0.read_bits(37..45) as u8;
 
-        if sets.get_bit(0) {
+        if sets.read_bit(0) {
             return CommandSetsSupported::NVM;
         }
-        if sets.get_bit(6) {
+        if sets.read_bit(6) {
             return CommandSetsSupported::IO;
         }
-        if sets.get_bit(7) {
+        if sets.read_bit(7) {
             return CommandSetsSupported::Admin;
         }
         panic!("Unknown command set: {}", sets);
     }
 
     fn memory_page_min_size(&self) -> u8 {
-        self.0.get_bits(48..52) as u8
+        self.0.read_bits(48..52) as u8
     }
 }
 impl fmt::Debug for Capabilities {
@@ -292,15 +295,15 @@ struct Version(u32);
 
 impl Version {
     pub fn major(&self) -> u8 {
-        self.0.get_bits(16..24) as u8
+        self.0.read_bits(16..24) as u8
     }
 
     pub fn minor(&self) -> u8 {
-        self.0.get_bits(8..16) as u8
+        self.0.read_bits(8..16) as u8
     }
 
     pub fn tertiary(&self) -> u8 {
-        self.0.get_bits(0..8) as u8
+        self.0.read_bits(0..8) as u8
     }
 }
 
@@ -315,28 +318,28 @@ pub struct ControllerConfiguration(u32);
 
 impl ControllerConfiguration {
     pub(crate) fn is_enabled(&self) -> bool {
-        self.0.get_bit(0)
+        self.0.read_bit(0)
     }
 
     pub(crate) fn set_enabled(&mut self, flag: bool) {
-        self.0.set_bit(0, flag);
+        self.0.write_bit(0, flag);
     }
 
     pub(crate) fn set_controller_command_set(&mut self, sets: CommandSetsSupported) {
         assert!(!self.is_enabled());
-        self.0.set_bits(4..7, sets as u32);
+        self.0.write_bits(4..7, sets as u32);
     }
 
     pub fn set_arbitration_mechanism(&mut self) {
         let round_robin = 0b00u32;
-        self.0.set_bits(11..14, round_robin);
+        self.0.write_bits(11..14, round_robin);
     }
 
     pub(crate) fn set_io_submission_queue_size(&mut self, size: u32) {
-        self.0.set_bits(16..20, size);
+        self.0.write_bits(16..20, size);
     }
     pub(crate) fn set_io_completion_queue_size(&mut self, size: u32) {
-        self.0.set_bits(20..24, size);
+        self.0.write_bits(20..24, size);
     }
 }
 
@@ -402,7 +405,7 @@ mod tests {
 
     use super::*;
 
-    #[test_case]
+    #[test(target = "qemu")]
     fn test_identity_controller() {
         let controller = &NVME_CONTROLLERS.read()[0];
         let identify = controller.identify_controller();
@@ -410,7 +413,7 @@ mod tests {
         assert_eq!(identify.serial_number.as_str(), "feedcafe");
     }
 
-    #[test_case]
+    #[test(target = "qemu")]
     fn test_namespace_identified() {
         let controller = &NVME_CONTROLLERS.read()[0];
         let namespaces = &controller.namespaces;
@@ -421,14 +424,14 @@ mod tests {
         assert_eq!(namespaces[0].blocks, 86016);
     }
 
-    #[test_case]
+    #[test(target = "qemu")]
     fn test_io_queues_created() {
         let controller = &NVME_CONTROLLERS.read()[0];
         assert_eq!(controller.io_queue.lock().queue_group_id, 1);
         assert_eq!(controller.io_queue.lock().queue_size, NVME_QUEUE_SIZE);
     }
 
-    #[test_case]
+    #[test(target = "qemu")]
     fn test_read_block() {
         struct GptHeader {
             signature: [u8; 8],
@@ -444,7 +447,7 @@ mod tests {
         assert_eq!(read, 12);
     }
 
-    #[test_case]
+    #[test(target = "qemu")]
     fn test_write_block() {
         struct PartitionTable {
             type_guid: [u8; 16],

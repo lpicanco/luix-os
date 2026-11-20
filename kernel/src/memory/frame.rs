@@ -50,7 +50,7 @@ mod tests {
     use super::*;
     use alloc::vec::Vec;
 
-    #[test_case]
+    #[test(target = "qemu")]
     fn test_containing_address() {
         let frame = PhysicalFrame::containing_address(PhysicalAddress::new(0x1000));
         assert_eq!(frame.start_address.as_u64(), 0x1000);
@@ -64,7 +64,7 @@ mod tests {
         assert_eq!(PhysicalFrame::size(), 4096);
     }
 
-    #[test_case]
+    #[test(target = "qemu")]
     fn test_range_inclusive() {
         let start = PhysicalFrame::containing_address(PhysicalAddress::new(0x1000));
         let end = PhysicalFrame::containing_address(PhysicalAddress::new(0x1FFF));

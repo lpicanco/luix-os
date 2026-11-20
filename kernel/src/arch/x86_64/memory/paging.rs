@@ -199,7 +199,7 @@ impl fmt::Display for PageTableEntry {
 mod tests {
     use super::*;
 
-    #[test_case]
+    #[test(target = "qemu")]
     fn test_page_containing_address() {
         let page = Page::containing_address(VirtualAddress::new(0x1000));
         assert_eq!(page.start_address, VirtualAddress::new(0x1000));
@@ -208,7 +208,7 @@ mod tests {
         assert_eq!(page.start_address, VirtualAddress::new(0x1000));
     }
 
-    #[test_case]
+    #[test(target = "qemu")]
     fn test_page_level() {
         let page = Page::containing_address(VirtualAddress::new(0xDEAD_BEEF));
         assert_eq!(page.p1_index(), 0xDB);
@@ -217,7 +217,7 @@ mod tests {
         assert_eq!(page.p4_index(), 0x0);
     }
 
-    #[test_case]
+    #[test(target = "qemu")]
     fn test_page_iter() {
         let start = Page::containing_address(VirtualAddress::new(0x1000));
         let end = Page::containing_address(VirtualAddress::new(0x3005));
@@ -234,7 +234,7 @@ mod tests {
         assert_eq!(iter.next(), None);
     }
 
-    #[test_case]
+    #[test(target = "qemu")]
     fn test_page_table_entry() {
         let mut entry = PageTableEntry::new();
         assert_eq!(entry.is_unused(), true);

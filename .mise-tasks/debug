@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+#MISE description="Boot with UEFI and wait for GDB on localhost:1234"
+#MISE depends=["image", "setup:ovmf"]
+set -euo pipefail
+# shellcheck source=lib.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+
+echo "gdb $bin/kernel -ex 'target remote localhost:1234'"
+exec "${qemu_uefi[@]}" -drive "$(nvme_drive "$normal_image")" -S -gdb tcp:127.0.0.1:1234

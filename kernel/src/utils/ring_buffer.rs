@@ -39,10 +39,11 @@ impl<T, const N: usize> RingBuffer<T, N> {
     }
 }
 
+#[cfg(test)]
 mod tests {
     use super::*;
 
-    #[test_case]
+    #[test]
     fn test_push_pop() {
         let mut ring_buffer = RingBuffer::<u32, 3>::new();
 
@@ -59,7 +60,7 @@ mod tests {
         assert_eq!(ring_buffer.pop(), None);
     }
 
-    #[test_case]
+    #[test]
     fn test_push_cycle() {
         let mut ring_buffer = RingBuffer::<u32, 3>::new();
 

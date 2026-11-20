@@ -15,9 +15,16 @@ pub fn init() {
             _ => None,
         })
         .expect("IOApic not found");
-    trace!("IO APIC address: {:#X}, ID: {}", io_apic.io_apic_address as usize, io_apic.io_apic_id);
+    trace!(
+        "IO APIC address: {:#X}, ID: {}",
+        io_apic.io_apic_address as usize,
+        io_apic.io_apic_id
+    );
 
-    let io_apic = IoApic { io_apic_address: io_apic.io_apic_address, io_apic_id: io_apic.io_apic_id };
+    let io_apic = IoApic {
+        io_apic_address: io_apic.io_apic_address,
+        io_apic_id: io_apic.io_apic_id,
+    };
     IO_APIC.call_once(|| io_apic);
 }
 

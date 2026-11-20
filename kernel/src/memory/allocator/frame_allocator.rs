@@ -85,7 +85,7 @@ impl FrameAllocator {
 mod tests {
     use super::*;
 
-    #[test_case]
+    #[test(target = "qemu")]
     fn test_reuse_requires_contiguous_frames() {
         let mut allocator = FrameAllocator::new(&[]);
         let start = PhysicalAddress::new(FRAME_SIZE as u64);

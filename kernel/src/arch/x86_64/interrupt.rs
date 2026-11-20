@@ -83,7 +83,11 @@ extern "x86-interrupt" fn general_protection_fault_handler(interrupt_frame: Inte
 }
 
 extern "x86-interrupt" fn page_fault_handler(interrupt_frame: InterruptFrame) {
-    println!("Error: Page fault at {}\n{}", registers::read_cr2(), interrupt_frame);
+    println!(
+        "Error: Page fault at {}\n{}",
+        registers::read_cr2(),
+        interrupt_frame
+    );
 
     loop {
         unsafe {

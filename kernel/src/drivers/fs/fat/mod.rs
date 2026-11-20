@@ -251,7 +251,7 @@ mod tests {
 
     use super::*;
 
-    #[test_case]
+    #[test(target = "qemu")]
     fn test_fat_area_cluster_chain_iter() {
         let controller = NVME_CONTROLLERS.read()[0].clone();
         let gpt = GuidedPartitionTable::read_from_disk(controller.as_ref()).unwrap();
@@ -278,7 +278,7 @@ mod tests {
         assert_eq!(actual_clusters, expected_clusters);
     }
 
-    #[test_case]
+    #[test(target = "qemu")]
     fn test_find_file_on_root() {
         let controller = NVME_CONTROLLERS.read()[0].clone();
         let gpt = GuidedPartitionTable::read_from_disk(controller.as_ref()).unwrap();
@@ -288,7 +288,7 @@ mod tests {
         assert_eq!(entry.unwrap().file_name(), "README.MD");
     }
 
-    #[test_case]
+    #[test(target = "qemu")]
     fn test_stat() {
         let controller = NVME_CONTROLLERS.read()[0].clone();
         let gpt = GuidedPartitionTable::read_from_disk(controller.as_ref()).unwrap();
@@ -300,7 +300,7 @@ mod tests {
         assert_eq!(entry.size, 0x22);
     }
 
-    #[test_case]
+    #[test(target = "qemu")]
     fn test_open() {
         let controller = NVME_CONTROLLERS.read()[0].clone();
         let gpt = GuidedPartitionTable::read_from_disk(controller.as_ref()).unwrap();
@@ -313,7 +313,7 @@ mod tests {
         assert_eq!(entry.size, 0x22);
     }
 
-    #[test_case]
+    #[test(target = "qemu")]
     fn test_read() {
         let controller = NVME_CONTROLLERS.read()[0].clone();
         let gpt = GuidedPartitionTable::read_from_disk(controller.as_ref()).unwrap();
@@ -332,7 +332,7 @@ mod tests {
         assert_eq!(buffer, b"nside a long path");
     }
 
-    #[test_case]
+    #[test(target = "qemu")]
     fn test_find_file_deep_inside() {
         let controller = NVME_CONTROLLERS.read()[0].clone();
         let gpt = GuidedPartitionTable::read_from_disk(controller.as_ref()).unwrap();
@@ -345,7 +345,7 @@ mod tests {
         assert_eq!(entry.size, 0x22);
     }
 
-    #[test_case]
+    #[test(target = "qemu")]
     fn test_directory_walker() {
         let controller = NVME_CONTROLLERS.read()[0].clone();
         let gpt = GuidedPartitionTable::read_from_disk(controller.as_ref()).unwrap();

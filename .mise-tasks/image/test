@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+#MISE description="Create the test disk image"
+#MISE depends=["test:build", "setup:limine"]
+set -euo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../lib.sh"
+
+# The NVMe tests expect a 42 MiB namespace.
+build_image "$test_image" 42 "$bin/kernel-test" -c 1:luix-os-test
+fat_copy "$bin/spawn-test" ::/boot/spawn.tst
+fat_copy "$bin/exit-test" ::/boot/exit.tst
+mmd "${fat[@]}" ::/test ::/test/deep ::/test/deep/inside ::/long-dir-name
+echo "This is a file inside a long path" >"$image_tmp/deepfile.txt"
+fat_copy "$image_tmp/deepfile.txt" ::/test/deep/inside
+fat_copy "$root/README.md" ::/boot
+fat_copy "$root/README.md" ::/
+finish_image

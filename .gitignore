@@ -12,3 +12,8 @@ target/
 # IDE configuration
 .idea/
 
+# Toolchain cache
+/.cache/luix/
+
+# Image files
+/imgs/

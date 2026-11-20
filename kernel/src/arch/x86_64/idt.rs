@@ -1,8 +1,8 @@
 use core::arch::asm;
 use core::mem::size_of;
 
-use crate::arch::{InterruptFrame, PrivilegeLevel, SegmentSelector};
 use crate::arch::x86_64::registers::read_cs;
+use crate::arch::{InterruptFrame, PrivilegeLevel, SegmentSelector};
 use crate::bits::Bits;
 
 #[repr(C)]
@@ -60,7 +60,10 @@ impl InterruptDescriptorTable {
     }
 
     pub fn set_privilege_level(&mut self, index: usize, privilege_level: PrivilegeLevel) {
-        self.entries[index].options.0.set_bits(13..15, privilege_level as u16);
+        self.entries[index]
+            .options
+            .0
+            .write_bits(13..15, privilege_level as u16);
     }
 }
 

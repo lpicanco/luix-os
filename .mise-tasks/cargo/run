@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+#MISE description="Cargo runner for x86_64-unknown-none (see .cargo/config.toml)"
+#MISE hide=true
+#MISE depends=["build:init", "build:fixtures", "setup"]
+#USAGE arg "<exe>" help="Executable built by Cargo"
+#USAGE arg "[args]..." var=#true help="Test filters, ignored by the kernel test runner"
+# `cargo run` passes the kernel. `cargo test` passes a hashed test executable such as
+# kernel-0123abcd. The dependencies are already satisfied, so call the task files directly.
+set -euo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../lib.sh"
+
+exe=${1:?expected the executable built by Cargo}
+if [[ $(basename "$exe") == kernel ]]; then
+    "$tasks/image/_default" "$exe" >/dev/null
+    exec "$tasks/run/_default"
+fi
+"$tasks/test/stage" "$exe"
+"$tasks/image/test" >/dev/null
+exec "$tasks/test/qemu"

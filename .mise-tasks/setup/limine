@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+#MISE description="Download, verify, and build the pinned Limine release"
+set -euo pipefail
+# shellcheck source=../lib.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../lib.sh"
+
+download "https://codeload.github.com/luix-os/limine/tar.gz/$limine_rev" limine.tar.gz "$limine_sha256"
+[[ -x "$limine/limine" ]] && exit 0
+
+build=$(mktemp -d "$cache/.build.XXXXXX")
+trap 'rm -rf "$build"' EXIT
+tar -xzf "$cache/limine.tar.gz" -C "$build"
+cc -std=c99 -O2 "$build/limine-$limine_rev/limine.c" -o "$build/limine-$limine_rev/limine"
+# Move into place only once the host tool is built. A concurrent run may win the rename.
+mv "$build/limine-$limine_rev" "$cache/" || [[ -x "$limine/limine" ]]

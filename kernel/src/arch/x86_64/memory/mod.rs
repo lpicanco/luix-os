@@ -1,2 +1,2 @@
-pub(crate) mod paging;
 pub(crate) mod mapper;
+pub(crate) mod paging;

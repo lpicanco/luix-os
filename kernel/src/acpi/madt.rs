@@ -1,5 +1,5 @@
-use core::{fmt, ptr};
 use core::mem::size_of;
+use core::{fmt, ptr};
 
 use crate::acpi::sdt::{AcpiTable, Sdt};
 
@@ -25,7 +25,6 @@ impl Madt {
             remaining_len: self.header.length as usize - madt_len,
         }
     }
-
 }
 
 impl AcpiTable for Madt {
@@ -96,8 +95,12 @@ impl Iterator for MadtEntryIterator {
 
         let header = unsafe { ptr::read_volatile(self.ptr) };
         let entry = match header.entry_type {
-            0 => MadtEntry::LocalApic(unsafe { ptr::read_volatile(self.ptr as *const MadtLocalApicEntry) }),
-            1 => MadtEntry::IoApic(unsafe { ptr::read_volatile(self.ptr as *const MadtIoApicEntry) }),
+            0 => MadtEntry::LocalApic(unsafe {
+                ptr::read_volatile(self.ptr as *const MadtLocalApicEntry)
+            }),
+            1 => {
+                MadtEntry::IoApic(unsafe { ptr::read_volatile(self.ptr as *const MadtIoApicEntry) })
+            }
             _ => MadtEntry::Unknown(header),
         };
 

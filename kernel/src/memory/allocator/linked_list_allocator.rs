@@ -150,7 +150,7 @@ impl Block {
 mod tests {
     use super::*;
 
-    #[test_case]
+    #[test(target = "qemu")]
     fn test_init() {
         let mut allocator = LinkedListAllocator::new();
         unsafe { allocator.init(0xFEED_CAFF_000, 2048) };
@@ -160,7 +160,7 @@ mod tests {
         assert_eq!(allocator.head.next.unwrap().size, 2048);
     }
 
-    #[test_case]
+    #[test(target = "qemu")]
     fn test_alloc_block() {
         let mut allocator = LinkedListAllocator::new();
         unsafe {
@@ -181,7 +181,7 @@ mod tests {
         assert!(next.next.is_none());
     }
 
-    #[test_case]
+    #[test(target = "qemu")]
     fn test_dealloc_block() {
         let mut allocator = LinkedListAllocator::new();
         unsafe {

@@ -27,10 +27,11 @@ pub fn handle_key(key: u8) {
     }
 }
 
+#[cfg(test)]
 mod tests {
     use alloc::collections::VecDeque;
 
-    #[test_case]
+    #[test(target = "qemu")]
     fn test_key_buffer() {
         let mut ring_buffer = VecDeque::with_capacity(3);
 

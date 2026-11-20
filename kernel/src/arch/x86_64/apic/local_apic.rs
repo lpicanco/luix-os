@@ -30,7 +30,10 @@ pub fn init() {
 }
 
 pub fn end_of_interrupt() {
-    LOCAL_APIC.get().expect("Local APIC not initialized.").end_of_interrupt();
+    LOCAL_APIC
+        .get()
+        .expect("Local APIC not initialized.")
+        .end_of_interrupt();
 }
 
 #[repr(u32)]
@@ -73,10 +76,9 @@ impl LocalApic {
 
     pub fn enable_interrupt(&self, vector: u8) {
         let timer_mode = 1u32; // Periodic mode
-        // Periodic mode | Timer vector
+                               // Periodic mode | Timer vector
         let data = (timer_mode << 17) | vector as u32;
         self.write(Registers::LvtTimer, data);
-
     }
 
     pub fn end_of_interrupt(&self) {

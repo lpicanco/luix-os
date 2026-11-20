@@ -76,12 +76,13 @@ impl<T> MutexWrapper<T> {
     }
 }
 
+#[cfg(test)]
 mod tests {
     use alloc::boxed::Box;
     use alloc::rc::Rc;
     use alloc::vec::Vec;
 
-    #[test_case]
+    #[test(target = "qemu")]
     fn test_heap_allocator() {
         let heap_value = Box::new(42);
         assert_eq!(*heap_value, 42);

@@ -85,7 +85,7 @@ pub(crate) fn read_cr2() -> PhysicalAddress {
         out(reg) cr2,
         options(nomem, nostack, preserves_flags));
     }
-    return PhysicalAddress::new(cr2)
+    return PhysicalAddress::new(cr2);
 }
 
 pub(crate) fn read_cr3() -> PhysicalAddress {
@@ -95,5 +95,5 @@ pub(crate) fn read_cr3() -> PhysicalAddress {
             out(reg) cr3,
             options(nomem, nostack, preserves_flags));
     }
-    return PhysicalAddress::new(cr3 & 0x_000f_ffff_ffff_f000) // Mask out the lower 12 bits
+    return PhysicalAddress::new(cr3 & 0x_000f_ffff_ffff_f000); // Mask out the lower 12 bits
 }

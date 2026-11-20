@@ -9,7 +9,6 @@ pub trait Bits {
     fn write_bits(&mut self, range: Range<usize>, value: Self);
 }
 
-
 #[macro_export]
 macro_rules! bits_number_impl {
     ($($t:ty)*) => ($(

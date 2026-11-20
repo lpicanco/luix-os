@@ -110,7 +110,10 @@ mod tests {
         assert_eq!(bs.bios_parameter_block.root_directories_count(), 0);
         assert_eq!({ bs.bios_parameter_block.root_directories_count() }, 0);
         let partition_sectors = { gpt.entry.ending_lba } - { gpt.entry.starting_lba } + 1;
-        assert_eq!(u64::from(bs.bios_parameter_block.large_sector_count()), partition_sectors);
+        assert_eq!(
+            u64::from(bs.bios_parameter_block.large_sector_count()),
+            partition_sectors
+        );
         assert_eq!(bs.sectors_per_fat(), 0x286);
 
         assert_eq!({ bs.root_cluster_number }, 2);

@@ -102,8 +102,11 @@ impl MemoryMapper {
                         current_frame = frame.clone();
                     } else {
                         current_frame = allocate_frame!();
-                        let table = self.physical_memory_offset + current_frame.start_address.as_u64();
-                        unsafe { ptr::write_bytes(table.as_mut_ptr::<u8>(), 0, PAGE_SIZE as usize) };
+                        let table =
+                            self.physical_memory_offset + current_frame.start_address.as_u64();
+                        unsafe {
+                            ptr::write_bytes(table.as_mut_ptr::<u8>(), 0, PAGE_SIZE as usize)
+                        };
                     }
                 }
             };

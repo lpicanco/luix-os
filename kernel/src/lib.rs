@@ -29,6 +29,7 @@ use core::panic::PanicInfo;
 mod acpi;
 #[cfg(target_os = "none")]
 mod arch;
+pub(crate) mod bits;
 #[cfg(target_os = "none")]
 mod display;
 #[cfg(target_os = "none")]
@@ -38,10 +39,9 @@ mod memory;
 #[cfg(target_os = "none")]
 pub mod print;
 #[cfg(target_os = "none")]
-mod serial;
-pub(crate) mod bits;
-#[cfg(target_os = "none")]
 mod process;
+#[cfg(target_os = "none")]
+mod serial;
 #[cfg(target_os = "none")]
 mod syscall;
 pub mod utils;

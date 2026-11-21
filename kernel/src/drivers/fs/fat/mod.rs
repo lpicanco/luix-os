@@ -26,39 +26,37 @@ impl Fat32FileSystem {
     pub fn read_from_disk(
         partition: GptPartitionEntry,
         block_device: Arc<dyn BlockDevice>,
-    ) -> Self {
+    ) -> Result<Self, Error> {
         // TODO: Check if the partition is FAT32
-        let boot_sector = Fat32BootSector::read_from_disk(&partition, block_device.as_ref());
-        let fat_area = FatArea::read_from_disk(&partition, &boot_sector, block_device.as_ref());
-        Self {
+        let boot_sector = Fat32BootSector::read_from_disk(&partition, block_device.as_ref())?;
+        let fat_area = FatArea::read_from_disk(&partition, &boot_sector, block_device.as_ref())?;
+        Ok(Self {
             boot_sector,
             partition,
             fat_area,
-            block_device: block_device.clone(),
-        }
+            block_device,
+        })
     }
 
-    pub fn stat(&self, path: &Path) -> Option<DirectoryEntry> {
+    pub fn stat(&self, path: &Path) -> Result<DirectoryEntry, Error> {
         self.find_entry(path)
     }
 
-    fn find_entry(&self, path: &Path) -> Option<DirectoryEntry> {
+    fn find_entry(&self, path: &Path) -> Result<DirectoryEntry, Error> {
         let mut found_entry = None;
         let mut cluster = self.boot_sector.root_cluster_number;
         let mut parts = path.iter().peekable();
         while let Some(part) = parts.next() {
             let mut walker =
                 DirectoryWalker::new(cluster, &self.fat_area, self.block_device.clone());
-            let entry = walker.find(|entry| {
-                !entry.is_long_name() && entry.file_name().eq_ignore_ascii_case(part)
-            })?;
+            let entry = walker.find_named(part)?;
             if parts.peek().is_some() && !entry.is_directory() {
-                return None;
+                return Err(Error::NotFound);
             }
             cluster = entry.cluster();
             found_entry = Some(entry);
         }
-        found_entry
+        found_entry.ok_or(Error::NotFound)
     }
 }
 
@@ -67,7 +65,7 @@ impl FileSystem for Fat32FileSystem {
         if path.iter().next().is_none() {
             return Err(Error::IsDirectory);
         }
-        let entry = self.find_entry(path).ok_or(Error::NotFound)?;
+        let entry = self.find_entry(path)?;
         if entry.is_directory() {
             return Err(Error::IsDirectory);
         }
@@ -92,12 +90,8 @@ impl FileSystem for Fat32FileSystem {
         let mut buffer = Vec::new();
         let clusters = self.fat_area.cluster_chain_iter(node.inode.as_u64() as u32);
         for cluster in clusters.skip(offset / bytes_per_cluster) {
-            if !self
-                .fat_area
-                .read_cluster(cluster, &mut buffer, self.block_device.as_ref())
-            {
-                return Err(Error::Io);
-            }
+            self.fat_area
+                .read_cluster(cluster, &mut buffer, self.block_device.as_ref())?;
             let len = min(count - copied, bytes_per_cluster - cluster_offset);
             data[copied..copied + len]
                 .copy_from_slice(&buffer[cluster_offset..cluster_offset + len]);
@@ -127,7 +121,7 @@ impl FatArea {
         partition: &GptPartitionEntry,
         boot_sector: &Fat32BootSector,
         block_device: &dyn BlockDevice,
-    ) -> Self {
+    ) -> Result<Self, Error> {
         let mut fat_area = FatArea {
             start_sector: partition.starting_lba as usize,
             sector_size: boot_sector.bios_parameter_block.bytes_per_sector() as usize,
@@ -137,8 +131,8 @@ impl FatArea {
             first_data_sector: boot_sector.first_data_sector(),
             fat: Vec::new(),
         };
-        fat_area.read_fat(block_device);
-        fat_area
+        fat_area.read_fat(block_device)?;
+        Ok(fat_area)
     }
 
     fn bytes_per_cluster(&self) -> usize {
@@ -153,17 +147,16 @@ impl FatArea {
     }
 
     /// Reads every sector of `cluster` into `buffer`, replacing its contents.
-    /// Returns false on an I/O error or an invalid cluster number.
     fn read_cluster(
         &self,
         cluster: u32,
         buffer: &mut Vec<u8>,
         block_device: &dyn BlockDevice,
-    ) -> bool {
+    ) -> Result<(), Error> {
         let bytes_per_cluster = self.bytes_per_cluster();
         buffer.clear();
         if cluster < 2 || bytes_per_cluster == 0 {
-            return false;
+            return Err(Error::Io);
         }
         buffer.reserve(bytes_per_cluster);
 
@@ -172,13 +165,11 @@ impl FatArea {
         let first_sector = self.cluster_start_sector(cluster);
         let spare = &mut buffer.spare_capacity_mut()[..bytes_per_cluster];
         for (i, sector) in spare.chunks_exact_mut(self.sector_size).enumerate() {
-            if block_device.read_block(first_sector + i, sector) != self.sector_size {
-                return false;
-            }
+            block_device.read_block(first_sector + i, sector)?;
         }
         // SAFETY: every byte in 0..bytes_per_cluster was written by read_block above.
         unsafe { buffer.set_len(bytes_per_cluster) };
-        true
+        Ok(())
     }
 
     pub fn cluster_chain_iter(&self, cluster: u32) -> FatClusterIterator<'_> {
@@ -188,21 +179,15 @@ impl FatArea {
         }
     }
 
-    fn read_fat(&mut self, block_device: &dyn BlockDevice) {
-        for i in 0..self.sectors_per_fat as u32 {
-            self.fat.extend(self.read_fat_sector(i, block_device))
-        }
-    }
-
-    fn read_fat_sector(&self, fat_index: u32, block_device: &dyn BlockDevice) -> Vec<u8> {
-        let sector = self.start_sector + self.fat_start_sector + fat_index as usize;
-        self.read_sector(sector, block_device)
-    }
-
-    fn read_sector(&self, sector: usize, block_device: &dyn BlockDevice) -> Vec<u8> {
+    fn read_fat(&mut self, block_device: &dyn BlockDevice) -> Result<(), Error> {
         let mut buffer = Box::<[u8; 512]>::new_uninit();
-        block_device.read_block(sector, buffer.as_bytes_mut());
-        unsafe { *buffer.assume_init() }.to_vec()
+        for i in 0..self.sectors_per_fat {
+            let sector = self.start_sector + self.fat_start_sector + i;
+            block_device.read_block(sector, buffer.as_bytes_mut())?;
+            self.fat
+                .extend_from_slice(unsafe { buffer.assume_init_ref() });
+        }
+        Ok(())
     }
 }
 
@@ -238,6 +223,16 @@ struct DirectoryWalker<'a> {
 }
 
 impl DirectoryWalker<'_> {
+    fn find_named(&mut self, name: &str) -> Result<DirectoryEntry, Error> {
+        for entry in self {
+            let entry = entry?;
+            if !entry.is_long_name() && entry.file_name().eq_ignore_ascii_case(name) {
+                return Ok(entry);
+            }
+        }
+        Err(Error::NotFound)
+    }
+
     pub fn new(
         cluster: u32,
         fat_area: &FatArea,
@@ -255,24 +250,24 @@ impl DirectoryWalker<'_> {
 }
 
 impl Iterator for DirectoryWalker<'_> {
-    type Item = DirectoryEntry;
+    type Item = Result<DirectoryEntry, Error>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.cluster_offset + 32 > self.cluster_data.len() {
             let cluster = self.cluster_iter.next()?;
-            if !self.fat_area.read_cluster(
+            if let Err(error) = self.fat_area.read_cluster(
                 cluster,
                 &mut self.cluster_data,
                 self.block_device.as_ref(),
             ) {
-                return None;
+                return Some(Err(error));
             }
             self.cluster_offset = 0;
         }
 
         let dir_entry = DirectoryEntry::from_sector(&self.cluster_data, self.cluster_offset);
         self.cluster_offset += 32;
-        dir_entry
+        dir_entry.map(Ok)
     }
 }
 
@@ -299,20 +294,27 @@ mod tests {
 
     struct RamDisk(Vec<u8>);
 
-    impl BlockDevice for RamDisk {
-        fn read_block(&self, sector: usize, buffer: &mut [MaybeUninit<u8>]) -> usize {
+    use crate::drivers::BlockError;
+
+    // SAFETY: the range check and copy cover the entire requested buffer.
+    unsafe impl BlockDevice for RamDisk {
+        fn read_block(
+            &self,
+            sector: usize,
+            buffer: &mut [MaybeUninit<u8>],
+        ) -> Result<(), BlockError> {
             let start = sector * RAM_SECTOR;
             let Some(source) = self.0.get(start..start + buffer.len()) else {
-                return 0;
+                return Err(BlockError);
             };
             for (dest, byte) in buffer.iter_mut().zip(source) {
                 dest.write(*byte);
             }
-            buffer.len()
+            Ok(())
         }
 
-        fn write_block(&self, _sector: usize, _buffer: &[u8]) -> usize {
-            0
+        fn write_block(&self, _sector: usize, _buffer: &[u8]) -> Result<(), BlockError> {
+            Err(BlockError)
         }
     }
 
@@ -334,7 +336,7 @@ mod tests {
 
     /// A FAT32 volume with four sectors per cluster:
     /// cluster 2 is the root directory, clusters 3 -> 4 hold DATA.BIN.
-    fn ram_fat32_with_multi_sector_clusters() -> Fat32FileSystem {
+    fn ram_disk() -> RamDisk {
         let mut disk = vec![0u8; ram_cluster_offset(5)];
 
         disk[11..13].copy_from_slice(&(RAM_SECTOR as u16).to_le_bytes());
@@ -366,15 +368,43 @@ mod tests {
             disk[data + i] = ram_file_byte(i);
         }
 
+        RamDisk(disk)
+    }
+
+    fn mount_ram_disk(disk: RamDisk) -> Result<Fat32FileSystem, Error> {
         // SAFETY: GptPartitionEntry is plain integers; all-zero is valid.
         let mut partition: GptPartitionEntry = unsafe { core::mem::zeroed() };
         partition.starting_lba = 0;
-        Fat32FileSystem::read_from_disk(partition, Arc::new(RamDisk(disk)))
+        Fat32FileSystem::read_from_disk(partition, Arc::new(disk))
+    }
+
+    #[test]
+    fn test_failed_reads_and_eof() {
+        let mut disk = ram_disk();
+        // Keep the directory and first file cluster, fail on the second file cluster.
+        disk.0.truncate(ram_cluster_offset(4));
+        let fs = mount_ram_disk(disk).unwrap();
+        let path = Path::new("/DATA.BIN").unwrap();
+        let node = fs.open(&path).unwrap();
+        let mut buf = [0u8; 8];
+        assert_eq!(fs.read_at(&node, RAM_CLUSTER - 4, &mut buf), Err(Error::Io));
+        assert_eq!(fs.read_at(&node, RAM_FILE_SIZE, &mut buf), Ok(0));
+
+        let mut disk = ram_disk();
+        disk.0.truncate(ram_cluster_offset(2));
+        assert_eq!(
+            mount_ram_disk(disk).unwrap().open(&path).err(),
+            Some(Error::Io)
+        );
+
+        let mut disk = ram_disk();
+        disk.0.truncate(RAM_SECTOR);
+        assert_eq!(mount_ram_disk(disk).err(), Some(Error::Io));
     }
 
     #[test]
     fn test_multi_sector_cluster_directory_walk() {
-        let fs = ram_fat32_with_multi_sector_clusters();
+        let fs = mount_ram_disk(ram_disk()).unwrap();
         let entry = fs.stat(&Path::new("/DATA.BIN").unwrap()).unwrap();
         assert_eq!(entry.cluster(), 3);
         assert_eq!(entry.size as usize, RAM_FILE_SIZE);
@@ -382,7 +412,7 @@ mod tests {
 
     #[test]
     fn test_multi_sector_cluster_read_at() {
-        let fs = ram_fat32_with_multi_sector_clusters();
+        let fs = mount_ram_disk(ram_disk()).unwrap();
         let node = fs.open(&Path::new("/DATA.BIN").unwrap()).unwrap();
 
         let mut all = vec![0u8; RAM_FILE_SIZE];
@@ -410,8 +440,10 @@ mod tests {
     #[test(target = "qemu")]
     fn test_fat_area_cluster_chain_iter() {
         let controller = NVME_CONTROLLERS.read()[0].clone();
-        let gpt = GuidedPartitionTable::read_from_disk(controller.as_ref()).unwrap();
-        let fs = Fat32FileSystem::read_from_disk(gpt.entry, controller);
+        let gpt = GuidedPartitionTable::read_from_disk(controller.as_ref())
+            .unwrap()
+            .unwrap();
+        let fs = Fat32FileSystem::read_from_disk(gpt.entry, controller).unwrap();
 
         let small_file = fs
             .stat(&Path::new("/test/deep/inside/deepfile.txt").unwrap())
@@ -437,20 +469,24 @@ mod tests {
     #[test(target = "qemu")]
     fn test_find_file_on_root() {
         let controller = NVME_CONTROLLERS.read()[0].clone();
-        let gpt = GuidedPartitionTable::read_from_disk(controller.as_ref()).unwrap();
-        let fs = Fat32FileSystem::read_from_disk(gpt.entry, controller.clone());
+        let gpt = GuidedPartitionTable::read_from_disk(controller.as_ref())
+            .unwrap()
+            .unwrap();
+        let fs = Fat32FileSystem::read_from_disk(gpt.entry, controller.clone()).unwrap();
         let entry = fs.find_entry(&Path::new("/README.md").unwrap());
-        assert!(entry.is_some());
+        assert!(entry.is_ok());
         assert_eq!(entry.unwrap().file_name(), "README.MD");
     }
 
     #[test(target = "qemu")]
     fn test_stat() {
         let controller = NVME_CONTROLLERS.read()[0].clone();
-        let gpt = GuidedPartitionTable::read_from_disk(controller.as_ref()).unwrap();
-        let fs = Fat32FileSystem::read_from_disk(gpt.entry, controller.clone());
+        let gpt = GuidedPartitionTable::read_from_disk(controller.as_ref())
+            .unwrap()
+            .unwrap();
+        let fs = Fat32FileSystem::read_from_disk(gpt.entry, controller.clone()).unwrap();
         let entry = fs.stat(&Path::new("/test/deep/inside/deepfile.txt").unwrap());
-        assert!(entry.is_some());
+        assert!(entry.is_ok());
         let entry = entry.unwrap();
         assert_eq!(entry.file_name(), "DEEPFILE.TXT");
         assert_eq!(entry.size, 0x22);
@@ -459,8 +495,10 @@ mod tests {
     #[test(target = "qemu")]
     fn test_open() {
         let controller = NVME_CONTROLLERS.read()[0].clone();
-        let gpt = GuidedPartitionTable::read_from_disk(controller.as_ref()).unwrap();
-        let fs = Fat32FileSystem::read_from_disk(gpt.entry, controller.clone());
+        let gpt = GuidedPartitionTable::read_from_disk(controller.as_ref())
+            .unwrap()
+            .unwrap();
+        let fs = Fat32FileSystem::read_from_disk(gpt.entry, controller.clone()).unwrap();
         let entry = fs
             .open(&Path::new("/test/deep/inside/deepfile.txt").unwrap())
             .unwrap();
@@ -472,8 +510,10 @@ mod tests {
     #[test(target = "qemu")]
     fn test_read() {
         let controller = NVME_CONTROLLERS.read()[0].clone();
-        let gpt = GuidedPartitionTable::read_from_disk(controller.as_ref()).unwrap();
-        let fs = Fat32FileSystem::read_from_disk(gpt.entry, controller.clone());
+        let gpt = GuidedPartitionTable::read_from_disk(controller.as_ref())
+            .unwrap()
+            .unwrap();
+        let fs = Fat32FileSystem::read_from_disk(gpt.entry, controller.clone()).unwrap();
         let entry = fs
             .open(&Path::new("/test/deep/inside/deepfile.txt").unwrap())
             .unwrap();
@@ -491,11 +531,13 @@ mod tests {
     #[test(target = "qemu")]
     fn test_find_file_deep_inside() {
         let controller = NVME_CONTROLLERS.read()[0].clone();
-        let gpt = GuidedPartitionTable::read_from_disk(controller.as_ref()).unwrap();
-        let fs = Fat32FileSystem::read_from_disk(gpt.entry, controller);
+        let gpt = GuidedPartitionTable::read_from_disk(controller.as_ref())
+            .unwrap()
+            .unwrap();
+        let fs = Fat32FileSystem::read_from_disk(gpt.entry, controller).unwrap();
 
         let entry = fs.find_entry(&Path::new("/test/deep/inside/deepfile.txt").unwrap());
-        assert!(entry.is_some());
+        assert!(entry.is_ok());
         let entry = entry.unwrap();
         assert_eq!(entry.file_name(), "DEEPFILE.TXT");
         assert_eq!(entry.size, 0x22);
@@ -504,10 +546,13 @@ mod tests {
     #[test(target = "qemu")]
     fn test_directory_walker() {
         let controller = NVME_CONTROLLERS.read()[0].clone();
-        let gpt = GuidedPartitionTable::read_from_disk(controller.as_ref()).unwrap();
-        let fs = Fat32FileSystem::read_from_disk(gpt.entry, controller.clone());
+        let gpt = GuidedPartitionTable::read_from_disk(controller.as_ref())
+            .unwrap()
+            .unwrap();
+        let fs = Fat32FileSystem::read_from_disk(gpt.entry, controller.clone()).unwrap();
 
         let mut walker = DirectoryWalker::new(2, &fs.fat_area, controller.clone())
+            .map(Result::unwrap)
             .filter(|entry| !entry.is_long_name());
 
         assert_eq!(walker.next().unwrap().name, "EFI");
@@ -519,6 +564,7 @@ mod tests {
         assert_eq!(walker.next().unwrap().name, "README");
 
         let mut walker = DirectoryWalker::new(test_dir.cluster(), &fs.fat_area, controller)
+            .map(Result::unwrap)
             .filter(|entry| !entry.is_long_name());
 
         assert_eq!(walker.next().unwrap().name, ".");

@@ -1,6 +1,6 @@
 use alloc::boxed::Box;
 
-use crate::drivers::BlockDevice;
+use crate::drivers::{BlockDevice, BlockError};
 
 #[repr(C, packed)]
 pub struct GptHeader {
@@ -37,21 +37,23 @@ pub struct GuidedPartitionTable {
 }
 
 impl GuidedPartitionTable {
-    pub(crate) fn read_from_disk(block_device: &dyn BlockDevice) -> Option<Self> {
+    pub(crate) fn read_from_disk(
+        block_device: &dyn BlockDevice,
+    ) -> Result<Option<Self>, BlockError> {
         let mut buffer = Box::<GptHeader>::new_uninit();
-        block_device.read_block(1, buffer.as_bytes_mut());
+        block_device.read_block(1, buffer.as_bytes_mut())?;
 
         let header = unsafe { *buffer.assume_init() };
         if header.signature != *b"EFI PART" {
-            return None;
+            return Ok(None);
         }
 
         // TODO: Check CRC32 and support more than one partition entry block
         let mut buffer = Box::<GptPartitionEntry>::new_uninit();
-        block_device.read_block(header.partition_entry_lba as usize, buffer.as_bytes_mut());
+        block_device.read_block(header.partition_entry_lba as usize, buffer.as_bytes_mut())?;
         let entry = unsafe { *buffer.assume_init() };
 
-        Some(Self { header, entry })
+        Ok(Some(Self { header, entry }))
     }
 
     pub fn disk_guid(&self) -> uuid::Uuid {
@@ -87,7 +89,9 @@ mod tests {
     #[test(target = "qemu")]
     fn test_read_from_disk() {
         let controller = &NVME_CONTROLLERS.read()[0];
-        let gpt = GuidedPartitionTable::read_from_disk(controller.as_ref()).unwrap();
+        let gpt = GuidedPartitionTable::read_from_disk(controller.as_ref())
+            .unwrap()
+            .unwrap();
 
         assert_eq!(gpt.header.signature, *b"EFI PART");
         assert_eq!({ gpt.header.header_size }, 92);

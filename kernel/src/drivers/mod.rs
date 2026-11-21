@@ -18,7 +18,13 @@ pub fn init() {
     println!("Drivers initialized.");
 }
 
-pub trait BlockDevice: Send + Sync {
-    fn read_block(&self, sector: usize, buffer: &mut [MaybeUninit<u8>]) -> usize;
-    fn write_block(&self, sector: usize, buffer: &[u8]) -> usize;
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub struct BlockError;
+
+/// # Safety
+/// Implementors must initialize every byte of the supplied buffer before returning
+/// `Ok(())` from `read_block`. Filesystem callers rely on this to read typed data.
+pub unsafe trait BlockDevice: Send + Sync {
+    fn read_block(&self, sector: usize, buffer: &mut [MaybeUninit<u8>]) -> Result<(), BlockError>;
+    fn write_block(&self, sector: usize, buffer: &[u8]) -> Result<(), BlockError>;
 }

@@ -13,6 +13,12 @@ pub(crate) enum Error {
     Io,
 }
 
+impl From<crate::drivers::BlockError> for Error {
+    fn from(_: crate::drivers::BlockError) -> Self {
+        Self::Io
+    }
+}
+
 #[derive(PartialEq, Clone, Copy, Debug)]
 pub(super) struct Inode(u64);
 

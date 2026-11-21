@@ -1,6 +1,6 @@
-use core::{fmt, hint};
+use core::hint;
+use core::sync::atomic::{fence, Ordering};
 
-use crate::bits::Bits;
 use crate::drivers::nvme::command::NvmeCommand;
 use crate::memory::address::PhysicalAddress;
 use crate::memory::allocator::dma_allocator::Dma;
@@ -25,9 +25,9 @@ impl QueueGroup {
         }
     }
 
-    pub fn submit_command(&mut self, command: NvmeCommand) {
+    pub fn submit_command(&mut self, command: NvmeCommand) -> Result<(), u16> {
         self.submission.submit_command(command);
-        self.completion.wait_for_completion();
+        self.completion.wait_for_completion()
     }
 
     pub fn submission_queue_addr(&self) -> PhysicalAddress {
@@ -85,16 +85,24 @@ impl Queue<Submission> {
         // TODO: Handle queue full condition
         command.command_id = self.tail as u16;
         self.commands[self.tail] = command;
+        fence(Ordering::Release);
         self.tail = (self.tail + 1) % self.commands.len();
         self.ring_doorbell();
     }
 }
 
 impl Queue<Completion> {
-    pub fn wait_for_completion(&mut self) {
-        while self.commands[self.tail].phase() != self.phase {
+    pub fn wait_for_completion(&mut self) -> Result<(), u16> {
+        let status_ptr = &raw const self.commands[self.tail].phase_status;
+        let phase_status = loop {
+            // The controller publishes the completion by toggling the phase bit.
+            let value = unsafe { status_ptr.read_volatile() };
+            if (value & 1 != 0) == self.phase {
+                break value;
+            }
             hint::spin_loop();
-        }
+        };
+        fence(Ordering::Acquire);
 
         self.tail = (self.tail + 1) % self.commands.len();
         if self.tail == 0 {
@@ -102,6 +110,12 @@ impl Queue<Completion> {
         }
 
         self.ring_doorbell();
+        // SC and SCT together identify success. The phase and status flags do not.
+        if (phase_status >> 1) & 0x7ff == 0 {
+            Ok(())
+        } else {
+            Err(phase_status >> 1)
+        }
     }
 }
 
@@ -113,36 +127,4 @@ pub struct NvmeCompletion {
     pub sq_id: u16,        // Submission Queue Identifier.
     pub command_id: u16,   // Command ID of the command that was completed.
     pub phase_status: u16, // Phase and Reason why the command failed, if it did.
-}
-
-impl NvmeCompletion {
-    pub fn status(&self) -> u16 {
-        self.phase_status.read_bits(1..16)
-    }
-
-    pub fn phase(&self) -> bool {
-        self.phase_status.read_bit(0)
-    }
-
-    pub fn is_success(&self) -> bool {
-        self.status() == 0
-    }
-
-    pub fn status_code(&self) -> u16 {
-        self.phase_status.read_bits(1..10)
-    }
-}
-
-impl fmt::Debug for NvmeCompletion {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("NvmeCompletion")
-            .field("sq_head", &self.sq_head)
-            .field("sq_id", &self.sq_id)
-            .field("command_id", &self.command_id)
-            .field("phase_status", &self.phase_status)
-            .field("status", &self.status())
-            .field("status_code", &self.status_code())
-            .field("phase", &self.phase())
-            .finish()
-    }
 }

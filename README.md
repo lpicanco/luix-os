@@ -27,8 +27,13 @@ mise install
 mise run doctor    # Check installed tools
 mise run build     # Build the kernel and init
 mise run test:all  # Run host and guest tests
-mise run run       # Boot LuixOS in QEMU
+mise run run       # Boot LuixOS in QEMU with NVMe
+mise run run virtio-blk  # Boot the same disk image with modern PCI virtio-blk
 ```
+
+The virtio-blk driver uses a single polled queue. It requires uncached PCI register
+mappings. The default QEMU setup supports this. Forcing OVMF to assign a low
+PCI BAR can conflict with Limine's existing cacheable mappings and prevent probing.
 
 The first boot or guest test run downloads the required boot files. Use
 `mise run setup` to download them in advance.
@@ -42,7 +47,7 @@ The first boot or guest test run downloads the required boot files. Use
 | `debug` | Boot with UEFI and wait for GDB on `localhost:1234` |
 | `test` | Run host tests |
 | `test:build` | Build the guest test kernel |
-| `test:qemu` | Build the test image and run guest tests in QEMU |
+| `test:qemu` | Build the FAT32 test image once and run the guest suite over both NVMe and modern PCI virtio-blk |
 | `fmt`, `fmt:check` | Format, or check formatting |
 | `lint` | Run Clippy and ShellCheck |
 | `ci` | Check formatting, lint, and run all tests |
@@ -86,6 +91,7 @@ Kernel tests marked `#[test]` run on the host and in QEMU. Tests marked
   - [x] PCI
   - [x] Storage
     - [x] NVMe 
+    - [x] Modern PCI virtio-blk
 - [x] Global Descriptor Table
 - [ ] System Calls
 - [ ] Task Scheduler

@@ -1,7 +1,7 @@
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 
-use spin::RwLock;
+use crate::drivers::BlockDevice;
 
 use crate::drivers::nvme::controller::NvmeController;
 use crate::drivers::pci::PCI_DRIVER;
@@ -11,8 +11,8 @@ mod command;
 mod controller;
 mod queue;
 
-pub(crate) static NVME_CONTROLLERS: RwLock<Vec<Arc<NvmeController>>> = RwLock::new(Vec::new());
-pub(crate) fn init() {
+pub(super) fn init() -> Vec<Arc<dyn BlockDevice>> {
+    let mut devices: Vec<Arc<dyn BlockDevice>> = Vec::new();
     const SUBCLASS_NVME: u8 = 0x08;
 
     pci_device!()
@@ -29,9 +29,12 @@ pub(crate) fn init() {
                 );
                 return;
             }
+            let Some(namespace) = controller.namespaces.first() else {
+                return;
+            };
             println!(
                 "NVMe Controller initialized. Total capacity: {}MB. Serial number: {}",
-                controller.namespaces[0].size / 1024 / 1024,
+                namespace.size / 1024 / 1024,
                 controller
                     .identify_controller
                     .as_ref()
@@ -39,6 +42,7 @@ pub(crate) fn init() {
                     .serial_number
             );
 
-            NVME_CONTROLLERS.write().push(Arc::new(controller));
+            devices.push(Arc::new(controller));
         });
+    devices
 }

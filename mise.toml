@@ -60,7 +60,7 @@ depends = ["build"]
 run = "cargo xtask image --bios"
 
 [tasks."test:qemu"]
-description = "Build the test image and run guest tests in QEMU"
+description = "Boot the same test image over NVMe and virtio-blk and run guest tests on each"
 depends = ["image:test"]
 run = "cargo xtask test-qemu"
 

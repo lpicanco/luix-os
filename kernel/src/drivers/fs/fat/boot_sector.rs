@@ -93,18 +93,14 @@ impl Fat32BootSector {
 
 #[cfg(all(test, target_os = "none"))]
 mod tests {
-    use crate::drivers::fs::gpt::GuidedPartitionTable;
-    use crate::drivers::nvme::NVME_CONTROLLERS;
+    use crate::drivers::fs::boot_partition;
 
     use super::*;
 
     #[test(target = "qemu")]
     fn test_boot_sector() {
-        let controller = &NVME_CONTROLLERS.read()[0];
-        let gpt = GuidedPartitionTable::read_from_disk(controller.as_ref())
-            .unwrap()
-            .unwrap();
-        let bs = Fat32BootSector::read_from_disk(&gpt.entry, controller.as_ref()).unwrap();
+        let (partition, device) = boot_partition().unwrap();
+        let bs = Fat32BootSector::read_from_disk(&partition, device.as_ref()).unwrap();
 
         assert!(matches!(bs.bios_parameter_block.boot_jump[0], 0xEB | 0xE9));
 
@@ -112,7 +108,7 @@ mod tests {
         assert_eq!(bs.bios_parameter_block.sectors_per_cluster, 1);
         assert_eq!(bs.bios_parameter_block.fat_count, 2);
         assert_eq!(bs.bios_parameter_block.root_directories_count(), 0);
-        let partition_sectors = { gpt.entry.ending_lba } - { gpt.entry.starting_lba } + 1;
+        let partition_sectors = { partition.ending_lba } - { partition.starting_lba } + 1;
         assert_eq!(
             u64::from(bs.bios_parameter_block.large_sector_count()),
             partition_sectors

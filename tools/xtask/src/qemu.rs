@@ -26,6 +26,18 @@ pub fn test(firmware: &Path, image: &Path) -> Result<()> {
             .context("registering QEMU cancellation handler")?;
     }
 
+    for device in [
+        "nvme,drive=disk,serial=feedcafe",
+        "virtio-blk-pci,drive=disk,disable-legacy=on",
+    ] {
+        eprintln!("Running QEMU guest tests with {device}");
+        test_device(firmware, image, device, &canceled)
+            .with_context(|| format!("testing {device}"))?;
+    }
+    Ok(())
+}
+
+fn test_device(firmware: &Path, image: &Path, device: &str, canceled: &AtomicBool) -> Result<()> {
     let mut drive = OsString::from("id=disk,file=");
     drive.push(image);
     drive.push(",format=raw,if=none");
@@ -41,13 +53,7 @@ pub fn test(firmware: &Path, image: &Path) -> Result<()> {
             "-bios",
         ])
         .arg(firmware)
-        .args([
-            "-smp",
-            "1",
-            "-device",
-            "nvme,drive=disk,serial=feedcafe",
-            "-drive",
-        ])
+        .args(["-smp", "1", "-device", device, "-drive"])
         .arg(drive)
         .args([
             "-display",
@@ -57,7 +63,7 @@ pub fn test(firmware: &Path, image: &Path) -> Result<()> {
         ])
         .spawn()
         .context("starting QEMU guest tests")?;
-    let status = wait_for_test(&mut child, TEST_TIMEOUT, &canceled)?;
+    let status = wait_for_test(&mut child, TEST_TIMEOUT, canceled)?;
     ensure!(
         status.code() == Some(TEST_SUCCESS),
         "QEMU guest tests exited with {status} (expected exit code {TEST_SUCCESS})"

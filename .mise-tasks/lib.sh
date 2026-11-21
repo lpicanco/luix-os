@@ -11,7 +11,5 @@ bios_image=$target_dir/images/luix-os-bios.img
 ovmf=$root/.cache/luix/downloads/OVMF.fd
 
 qemu=(qemu-system-x86_64 -M q35 -serial stdio -snapshot)
-qemu_uefi=("${qemu[@]}" -m 128M -bios "$ovmf" -smp 1 -device "nvme,drive=disk,serial=feedcafe")
-
-# Print the QEMU -drive value that attaches an image to the NVMe device.
-nvme_drive() { echo "id=disk,file=$1,format=raw,if=none"; }
+qemu_uefi=("${qemu[@]}" -m 128M -bios "$ovmf" -smp 1 -drive "id=disk,file=$normal_image,format=raw,if=none")
+nvme_device=nvme,drive=disk,serial=feedcafe

@@ -1,19 +1,29 @@
+#[cfg(target_os = "none")]
 use limine::memory_map::{Entry, EntryType};
+#[cfg(target_os = "none")]
 use limine::request::{HhdmRequest, MemoryMapRequest};
+#[cfg(target_os = "none")]
 use spin::Once;
 
+#[cfg(target_os = "none")]
 use crate::arch::memory::mapper::MemoryMapper;
+#[cfg(target_os = "none")]
 use crate::memory::address::VirtualAddress;
+#[cfg(target_os = "none")]
 use crate::{println, trace};
 
 pub mod address;
 pub mod allocator;
 pub mod frame;
 
+#[cfg(target_os = "none")]
 static MEMORY_MAP_REQUEST: MemoryMapRequest = MemoryMapRequest::new();
+#[cfg(target_os = "none")]
 static HHDM_REQUEST: HhdmRequest = HhdmRequest::new();
+#[cfg(target_os = "none")]
 pub static MEMORY_MAPPER: Once<MemoryMapper> = Once::new();
 
+#[cfg(target_os = "none")]
 pub fn init() {
     let pm_offset = HHDM_REQUEST
         .get_response()
@@ -34,6 +44,7 @@ pub fn init() {
     )
 }
 
+#[cfg(target_os = "none")]
 fn calculate_available_memory(entries: &[&Entry]) -> usize {
     entries
         .iter()
@@ -42,7 +53,7 @@ fn calculate_available_memory(entries: &[&Entry]) -> usize {
         .sum()
 }
 
-#[cfg(test)]
+#[cfg(all(test, target_os = "none"))]
 mod tests {
     use crate::memory::allocator::FRAME_ALLOCATOR;
     use crate::memory::MEMORY_MAPPER;

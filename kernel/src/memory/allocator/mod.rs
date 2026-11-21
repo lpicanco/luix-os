@@ -1,23 +1,36 @@
+#[cfg(target_os = "none")]
 use limine::memory_map::Entry;
+#[cfg(target_os = "none")]
 use spin::once::Once;
 use spin::Mutex;
 
+#[cfg(target_os = "none")]
 use crate::arch::memory::paging::Page;
+#[cfg(target_os = "none")]
 use crate::memory::address::VirtualAddress;
+#[cfg(target_os = "none")]
 use crate::memory::allocator::frame_allocator::FrameAllocator;
+#[cfg(target_os = "none")]
 use crate::memory::allocator::linked_list_allocator::LinkedListAllocator;
+#[cfg(target_os = "none")]
 use crate::memory::MEMORY_MAPPER;
 
+#[cfg(target_os = "none")]
 pub mod dma_allocator;
 pub mod frame_allocator;
 mod linked_list_allocator;
 
+#[cfg(target_os = "none")]
 const HEAP_START: usize = 0xFEED_CAFE_000;
+#[cfg(target_os = "none")]
 const HEAP_SIZE: usize = 1024 * 1024 * 5; // 5MB
 
+// Only the kernel installs this allocator; host tests keep std's.
+#[cfg(target_os = "none")]
 #[global_allocator]
 static ALLOCATOR: MutexWrapper<LinkedListAllocator> = MutexWrapper::new(LinkedListAllocator::new());
 
+#[cfg(target_os = "none")]
 pub static FRAME_ALLOCATOR: Once<Mutex<FrameAllocator>> = Once::new();
 
 #[macro_export]
@@ -40,6 +53,7 @@ macro_rules! allocate_frame {
     };
 }
 
+#[cfg(target_os = "none")]
 pub fn init(entries: &'static [&'static Entry]) {
     unsafe {
         FRAME_ALLOCATOR.call_once(|| Mutex::new(FrameAllocator::new(entries)));
@@ -76,7 +90,7 @@ impl<T> MutexWrapper<T> {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, target_os = "none"))]
 mod tests {
     use alloc::boxed::Box;
     use alloc::rc::Rc;

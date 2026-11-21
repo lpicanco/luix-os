@@ -1,13 +1,21 @@
 use core::fmt;
 
+#[cfg(target_os = "none")]
 pub(crate) mod apic;
+#[cfg(target_os = "none")]
 pub mod gdt;
+#[cfg(target_os = "none")]
 mod idt;
+#[cfg(target_os = "none")]
 pub(crate) mod instructions;
+#[cfg(target_os = "none")]
 pub(crate) mod interrupt;
 pub(crate) mod memory;
+#[cfg(target_os = "none")]
 pub(crate) mod port;
+#[cfg(target_os = "none")]
 pub(crate) mod registers;
+#[cfg(target_os = "none")]
 mod serial_writer;
 
 #[repr(C, packed)]

@@ -6,11 +6,13 @@
 #![cfg_attr(target_os = "none", feature(allocator_api))]
 #![cfg_attr(target_os = "none", feature(new_uninit))]
 #![cfg_attr(target_os = "none", feature(strict_provenance))]
-#![cfg_attr(target_os = "none", feature(maybe_uninit_as_bytes))]
+#![feature(maybe_uninit_as_bytes)]
 #![cfg_attr(target_os = "none", test_runner(crate::test_runner))]
 #![cfg_attr(target_os = "none", reexport_test_harness_main = "test_main")]
+// Host builds only compile the hardware-independent subset for unit tests,
+// so code that only the kernel calls looks unused there.
+#![cfg_attr(not(target_os = "none"), allow(dead_code, unused_imports))]
 
-#[cfg(target_os = "none")]
 extern crate alloc;
 
 // Replaces the standard #[test] in this crate.
@@ -27,14 +29,13 @@ use core::panic::PanicInfo;
 
 #[cfg(target_os = "none")]
 mod acpi;
-#[cfg(target_os = "none")]
+// arch, drivers and memory build on the host too; their hardware-facing
+// parts are gated on target_os = "none" inside each module.
 mod arch;
 pub(crate) mod bits;
 #[cfg(target_os = "none")]
 mod display;
-#[cfg(target_os = "none")]
 mod drivers;
-#[cfg(target_os = "none")]
 mod memory;
 #[cfg(target_os = "none")]
 pub mod print;

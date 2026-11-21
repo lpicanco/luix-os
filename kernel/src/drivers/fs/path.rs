@@ -21,7 +21,7 @@ impl<'a> Path<'a> {
 mod tests {
     use super::*;
 
-    #[test(target = "qemu")]
+    #[test]
     fn test_path_iter() {
         let path = Path::new("/a/b/c.file").unwrap();
         let mut iter = path.iter();

@@ -281,7 +281,9 @@ mod tests {
     use alloc::vec;
     use core::mem::MaybeUninit;
 
+    #[cfg(target_os = "none")]
     use crate::drivers::fs::gpt::GuidedPartitionTable;
+    #[cfg(target_os = "none")]
     use crate::drivers::nvme::NVME_CONTROLLERS;
 
     use super::*;

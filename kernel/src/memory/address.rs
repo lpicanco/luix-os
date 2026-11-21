@@ -119,7 +119,7 @@ impl fmt::Display for VirtualAddress {
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[test(target = "qemu")]
+    #[test]
     fn test_virtual_address() {
         let addr = VirtualAddress::new(0xDEAD_BEEF);
         assert_eq!(addr.as_u64(), 0xDEAD_BEEF);
@@ -133,7 +133,7 @@ mod tests {
         assert_eq!(addr + 0x32, VirtualAddress::new(0xDEAD_BF21));
     }
 
-    #[test(target = "qemu")]
+    #[test]
     fn test_physical_address() {
         let addr = PhysicalAddress::new(0xDEAD_BEEF);
         assert_eq!(addr.as_u64(), 0xDEAD_BEEF);

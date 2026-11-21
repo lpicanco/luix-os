@@ -1,8 +1,13 @@
+#[cfg(target_os = "none")]
 use limine::request::KernelFileRequest;
+#[cfg(target_os = "none")]
 use uuid::Uuid;
 
+#[cfg(target_os = "none")]
 use crate::drivers::fs::fat::Fat32FileSystem;
+#[cfg(target_os = "none")]
 use crate::drivers::nvme::NVME_CONTROLLERS;
+#[cfg(target_os = "none")]
 use crate::trace;
 
 mod fat;
@@ -10,13 +15,16 @@ mod gpt;
 mod path;
 pub(crate) mod vfs;
 
+#[cfg(target_os = "none")]
 static KERNEL_FILE_REQUEST: KernelFileRequest = KernelFileRequest::new();
 
+#[cfg(target_os = "none")]
 pub fn init() {
     // TODO: Replace the temporary FAT32 root mount with configurable mount points.
     vfs::mount_root(find_boot_fs().expect("Failed to find boot fs"));
 }
 
+#[cfg(target_os = "none")]
 fn find_boot_fs() -> Option<Fat32FileSystem> {
     let boot_partition = KERNEL_FILE_REQUEST
         .get_response()

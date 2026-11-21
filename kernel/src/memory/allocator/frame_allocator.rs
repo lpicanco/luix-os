@@ -1,29 +1,31 @@
 use alloc::vec::Vec;
+use core::ops::Range;
 
 use limine::memory_map::{Entry, EntryType};
 
 use crate::memory::address::PhysicalAddress;
 use crate::memory::frame::{PhysicalFrame, FRAME_SIZE};
 
-struct UsableBlock {
-    start: u64,
-    size: u64,
-}
-
 pub struct FrameAllocator {
-    // TODO: Keep the iterator instead of the memory map
-    memory_map: &'static [&'static Entry],
+    entries: core::slice::Iter<'static, &'static Entry>,
+    // Frame numbers, with the end excluded. Keep the current range inline so
+    // single-frame allocations can bootstrap the heap without allocating.
+    current: Range<u64>,
+    skipped: Vec<Range<u64>>,
     reusable_frames: Vec<PhysicalFrame>,
-    next: usize,
+    #[cfg(test)]
+    fresh_frame_count: usize,
 }
 
 impl FrameAllocator {
     pub fn new(entries: &'static [&'static Entry]) -> Self {
-        let reusable_frames = Vec::new();
         Self {
-            memory_map: entries,
-            reusable_frames,
-            next: 0,
+            entries: entries.iter(),
+            current: 0..0,
+            skipped: Vec::new(),
+            reusable_frames: Vec::new(),
+            #[cfg(test)]
+            fresh_frame_count: 0,
         }
     }
 
@@ -50,9 +52,44 @@ impl FrameAllocator {
             return Some(frame);
         }
 
-        let frame = self.usable_frames().nth(self.next)?;
-        self.next += frame_count;
-        Some(frame)
+        let first = self.allocate_fresh(frame_count as u64)?;
+        #[cfg(test)]
+        {
+            self.fresh_frame_count += frame_count;
+        }
+        Some(PhysicalFrame {
+            start_address: PhysicalAddress::new(first * FRAME_SIZE as u64),
+        })
+    }
+
+    fn allocate_fresh(&mut self, count: u64) -> Option<u64> {
+        if let Some(index) = self.skipped.iter().position(|r| r.end - r.start >= count) {
+            let range = &mut self.skipped[index];
+            let first = range.start;
+            range.start += count;
+            if range.is_empty() {
+                self.skipped.swap_remove(index);
+            }
+            return Some(first);
+        }
+
+        while self.current.end - self.current.start < count {
+            let next = self.entries.find_map(|entry| {
+                if entry.entry_type != EntryType::USABLE {
+                    return None;
+                }
+                let end = entry.base.checked_add(entry.length)?;
+                let frames = entry.base.div_ceil(FRAME_SIZE as u64)..end / FRAME_SIZE as u64;
+                (!frames.is_empty()).then_some(frames)
+            })?;
+            let previous = core::mem::replace(&mut self.current, next);
+            if !previous.is_empty() {
+                self.skipped.push(previous);
+            }
+        }
+        let first = self.current.start;
+        self.current.start += count;
+        Some(first)
     }
 
     pub fn deallocate_frames(&mut self, start_address: PhysicalAddress, size: usize) {
@@ -69,21 +106,42 @@ impl FrameAllocator {
 
     #[cfg(test)]
     pub(crate) fn allocated_frame_count(&self) -> usize {
-        self.next - self.reusable_frames.len()
-    }
-
-    fn usable_frames(&self) -> impl Iterator<Item = PhysicalFrame> {
-        self.memory_map
-            .iter()
-            .filter(|entry| entry.entry_type == EntryType::USABLE)
-            .flat_map(|entry| (entry.base..entry.base + entry.length).step_by(FRAME_SIZE))
-            .map(|address| PhysicalFrame::containing_address(PhysicalAddress::new(address)))
+        self.fresh_frame_count - self.reusable_frames.len()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn fresh_allocations_stay_within_usable_ranges() {
+        static ENTRIES: [&Entry; 3] = [
+            &Entry {
+                base: 0x1001,
+                length: 0x2fff,
+                entry_type: EntryType::USABLE,
+            },
+            &Entry {
+                base: 0x4000,
+                length: 0x2000,
+                entry_type: EntryType::RESERVED,
+            },
+            &Entry {
+                base: 0x6000,
+                length: 0x3fff,
+                entry_type: EntryType::USABLE,
+            },
+        ];
+        let mut allocator = FrameAllocator::new(&ENTRIES);
+        assert_eq!(allocator.allocate_frames(4 * FRAME_SIZE), None);
+        let run = allocator.allocate_frames(2 * FRAME_SIZE + 1).unwrap();
+        assert_eq!(run.start_address.as_u64(), 0x6000);
+        let tail = allocator.allocate_frames(2 * FRAME_SIZE).unwrap();
+        assert_eq!(tail.start_address.as_u64(), 0x2000);
+        assert_eq!(allocator.allocate_frame(), None);
+        assert_eq!(allocator.allocated_frame_count(), 5);
+    }
 
     #[test]
     fn test_reuse_requires_contiguous_frames() {

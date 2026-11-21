@@ -1,7 +1,7 @@
 use alloc::boxed::Box;
 
 use crate::drivers::fs::gpt::GptPartitionEntry;
-use crate::drivers::BlockDevice;
+use crate::drivers::{BlockDevice, BlockError};
 
 #[repr(C, packed)]
 #[derive(Clone, Copy)]
@@ -60,10 +60,13 @@ pub struct Fat32BootSector {
 }
 
 impl Fat32BootSector {
-    pub fn read_from_disk(partition: &GptPartitionEntry, block_device: &dyn BlockDevice) -> Self {
+    pub fn read_from_disk(
+        partition: &GptPartitionEntry,
+        block_device: &dyn BlockDevice,
+    ) -> Result<Self, BlockError> {
         let mut buffer = Box::<Self>::new_uninit();
-        block_device.read_block(partition.starting_lba as usize, buffer.as_bytes_mut());
-        unsafe { *buffer.assume_init() }
+        block_device.read_block(partition.starting_lba as usize, buffer.as_bytes_mut())?;
+        Ok(unsafe { *buffer.assume_init() })
     }
 
     pub fn sectors_per_fat(&self) -> u32 {
@@ -98,8 +101,10 @@ mod tests {
     #[test(target = "qemu")]
     fn test_boot_sector() {
         let controller = &NVME_CONTROLLERS.read()[0];
-        let gpt = GuidedPartitionTable::read_from_disk(controller.as_ref()).unwrap();
-        let bs = Fat32BootSector::read_from_disk(&gpt.entry, controller.as_ref());
+        let gpt = GuidedPartitionTable::read_from_disk(controller.as_ref())
+            .unwrap()
+            .unwrap();
+        let bs = Fat32BootSector::read_from_disk(&gpt.entry, controller.as_ref()).unwrap();
 
         assert!(matches!(bs.bios_parameter_block.boot_jump[0], 0xEB | 0xE9));
 

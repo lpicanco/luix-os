@@ -25,7 +25,7 @@ pub fn init() {
 }
 
 #[cfg(target_os = "none")]
-fn find_boot_fs() -> Option<Fat32FileSystem> {
+fn find_boot_fs() -> Result<Fat32FileSystem, vfs::Error> {
     let boot_partition = KERNEL_FILE_REQUEST
         .get_response()
         .expect("Failed to get boot partition");
@@ -40,17 +40,16 @@ fn find_boot_fs() -> Option<Fat32FileSystem> {
         .expect("Failed to get partition id")
         .into();
 
+    let mut error = vfs::Error::NotFound;
     for controller in NVME_CONTROLLERS.read().iter() {
-        let gpt = gpt::GuidedPartitionTable::read_from_disk(controller.as_ref());
-        if let Some(gpt) = gpt {
-            if gpt.disk_guid() == disk_id && gpt.partition_guid() == partition_id {
+        match gpt::GuidedPartitionTable::read_from_disk(controller.as_ref()) {
+            Ok(Some(gpt)) if gpt.disk_guid() == disk_id && gpt.partition_guid() == partition_id => {
                 trace!("Found boot partition: {:#?}", gpt.partition_guid());
-                return Some(Fat32FileSystem::read_from_disk(
-                    gpt.entry,
-                    controller.clone(),
-                ));
+                return Fat32FileSystem::read_from_disk(gpt.entry, controller.clone());
             }
+            Err(_) => error = vfs::Error::Io,
+            Ok(_) => {}
         }
     }
-    None
+    Err(error)
 }

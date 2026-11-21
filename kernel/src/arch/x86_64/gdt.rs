@@ -11,6 +11,8 @@ use crate::println;
 
 // User-mode spawn syscalls load ELF files through FAT32 and NVMe on this stack.
 const STACK_SIZE: usize = 32 * 1024;
+pub(super) const DOUBLE_FAULT_IST_INDEX: usize = 0;
+static mut DOUBLE_FAULT_STACK: [u8; STACK_SIZE] = [0; STACK_SIZE];
 pub static SELECTORS: Once<Selectors> = Once::new();
 static GDT: Once<GlobalDescriptorTable> = Once::new();
 static TSS: Once<TaskStateSegment> = Once::new();
@@ -21,7 +23,7 @@ pub fn init() {
     println!("Global Descriptor Table initialized.");
 }
 
-#[repr(packed)]
+#[repr(C, packed)]
 pub struct TaskStateSegment {
     reserved_1: u32,
     pub privilege_stack_table: [VirtualAddress; 3],
@@ -31,6 +33,8 @@ pub struct TaskStateSegment {
     reserved_4: u16,
     pub iomap_base: u16,
 }
+
+const _: () = assert!(core::mem::offset_of!(TaskStateSegment, interrupt_stack_table) == 36);
 
 impl TaskStateSegment {
     fn new() -> Self {
@@ -50,6 +54,8 @@ impl TaskStateSegment {
             });
             stack_start + STACK_SIZE as u64
         };
+        tss.interrupt_stack_table[DOUBLE_FAULT_IST_INDEX] =
+            VirtualAddress::from_ptr(&raw const DOUBLE_FAULT_STACK) + STACK_SIZE as u64;
         tss
     }
 }
@@ -190,6 +196,18 @@ mod tests {
         assert!(GDT.is_completed());
         let gdt = GDT.get().unwrap();
         assert_eq!(gdt.next_free, 7);
+    }
+
+    #[test(target = "qemu")]
+    fn double_fault_uses_dedicated_stack() {
+        let tss = TSS.get().unwrap();
+        let fault_stack = tss.interrupt_stack_table[DOUBLE_FAULT_IST_INDEX];
+        let privilege_stack = tss.privilege_stack_table[0];
+        assert_eq!(
+            fault_stack,
+            VirtualAddress::from_ptr(&raw const DOUBLE_FAULT_STACK) + STACK_SIZE as u64
+        );
+        assert_ne!(fault_stack, privilege_stack);
     }
 
     #[test(target = "qemu")]

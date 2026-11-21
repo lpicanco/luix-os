@@ -10,7 +10,7 @@ use crate::trace;
 #[repr(C, packed)]
 pub struct Rsdt {
     header: Sdt,
-    tables: &'static [u32],
+    tables: &'static [[u8; 4]],
 }
 
 impl Rsdt {
@@ -21,7 +21,7 @@ impl Rsdt {
         let tables_addr = (ptr as *const () as usize) + size_of::<Sdt>();
         let tables_len = sdt.length as usize - size_of::<Sdt>();
         let num_entries = tables_len / size_of::<u32>();
-        let tables = unsafe { slice::from_raw_parts(tables_addr as *const u32, num_entries) };
+        let tables = unsafe { slice::from_raw_parts(tables_addr as *const [u8; 4], num_entries) };
 
         let rsp = Self {
             header: Sdt::load_from_address(rsdp.sdt_address()),
@@ -38,7 +38,8 @@ impl Rsdt {
     pub fn find_table<T: AcpiTable>(&self, signature: Signature) -> Option<T> {
         trace!("Searching for table: {}", signature);
 
-        self.tables.iter().find_map(|&ptr| {
+        self.tables.iter().find_map(|&entry| {
+            let ptr = u32::from_le_bytes(entry);
             let sdt = Sdt::load_from_address::<Sdt>(ptr);
             if sdt.signature == signature {
                 Some(T::load_from_address::<T>(ptr))

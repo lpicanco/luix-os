@@ -14,7 +14,7 @@ description = "Download and verify Limine and OVMF"
 run = "cargo xtask setup"
 
 [tasks."setup:limine"]
-description = "Download and verify the pinned Limine UEFI loader"
+description = "Download and verify the pinned Limine binary release"
 run = "cargo xtask setup limine"
 
 [tasks."setup:ovmf"]

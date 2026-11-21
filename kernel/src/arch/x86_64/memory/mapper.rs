@@ -180,11 +180,14 @@ mod tests {
         let phys = mapper.translate_addr(mapper.physical_memory_offset + 0x42);
         assert_eq!(phys, Some(PhysicalAddress::new(0x42)));
 
-        let phys = mapper.translate_addr(VirtualAddress::new(0xFEED_CAFE_000));
-        assert_eq!(phys, Some(PhysicalAddress::new(0x1000)));
-
-        let phys = mapper.translate_addr(VirtualAddress::new(0xFEEDCB0A000));
-        assert_eq!(phys, Some(PhysicalAddress::new(0x10000)));
+        let virt = VirtualAddress::new(0xFEED_DEAD_3000);
+        let frame = allocate_frame!();
+        mapper.map_page(Page::containing_address(virt), frame.clone(), false, false);
+        assert_eq!(mapper.translate_addr(virt), Some(frame.start_address));
+        assert_eq!(
+            mapper.translate_addr(virt + 0x42),
+            Some(frame.start_address + 0x42)
+        );
 
         let phys = mapper.translate_addr(VirtualAddress::new(0xFEED_DEAD_0000));
         assert_eq!(phys, None);

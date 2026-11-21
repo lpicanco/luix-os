@@ -4,7 +4,6 @@ mod qemu;
 
 use std::env;
 use std::ffi::{OsStr, OsString};
-use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -90,46 +89,48 @@ fn create_image(paths: &Paths, args: &[OsString]) -> Result<()> {
         .first()
         .map(PathBuf::from)
         .unwrap_or_else(|| paths.bin.join(kernel));
-    let bootx64 = firmware::limine(&paths.cache)?;
+    let archive = firmware::limine(&paths.cache)?;
+    let build = tempfile::tempdir().context("creating Limine build directory")?;
+    let status = Command::new("tar")
+        .arg("-xzf")
+        .arg(archive)
+        .arg("-C")
+        .arg(build.path())
+        .status()
+        .context("extracting Limine release")?;
+    ensure!(status.success(), "extracting Limine failed with {status}");
+    let source = build.path().join("limine-binary");
     let bios = if name == BIOS_IMAGE {
-        Some(build_bios_installer(&paths.cache)?)
+        Some(build_bios_installer(&source)?)
     } else {
         None
     };
-    let installer = bios.as_ref().map(|build| build.path().join("limine"));
     image::write(
         &output,
         &kernel,
         &paths.bin,
         paths.root,
-        &bootx64,
+        &source.join("BOOTX64.EFI"),
         name == TEST_IMAGE,
-        installer.as_deref(),
+        bios.as_deref(),
     )?;
     println!("{}", output.display());
     Ok(())
 }
 
-fn build_bios_installer(cache: &Path) -> Result<tempfile::TempDir> {
-    let source = firmware::bios(cache)?;
-    let build =
-        tempfile::tempdir().context("creating a build directory for the Limine BIOS installer")?;
-    fs::copy(
-        source.join("limine-bios.sys"),
-        build.path().join("limine-bios.sys"),
-    )
-    .context("staging the Limine BIOS boot file")?;
+fn build_bios_installer(source: &Path) -> Result<PathBuf> {
+    let installer = source.join("limine");
     let cc = env::var_os("CC");
     let status = Command::new(cc.as_deref().unwrap_or_else(|| OsStr::new("cc")))
-        .args(["-std=c99", "-O2"])
+        .args(["-std=c99", "-O2", "-D_FILE_OFFSET_BITS=64"])
         .arg(source.join("limine.c"))
         .arg("-o")
-        .arg(build.path().join("limine"))
+        .arg(&installer)
         .status()
         .context("running the C compiler for the Limine BIOS installer")?;
     ensure!(
         status.success(),
         "building the Limine BIOS installer failed with {status}"
     );
-    Ok(build)
+    Ok(installer)
 }

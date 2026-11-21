@@ -5,7 +5,6 @@ use core::ops::{Deref, DerefMut};
 use core::ptr;
 use core::ptr::NonNull;
 
-use crate::allocate_frame;
 use crate::memory::address::PhysicalAddress;
 use crate::memory::allocator::FRAME_ALLOCATOR;
 use crate::memory::MEMORY_MAPPER;
@@ -62,7 +61,13 @@ impl<T> Dma<[MaybeUninit<T>]> {
 pub struct DmaAllocator;
 unsafe impl Allocator for DmaAllocator {
     fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
-        let frame_address = allocate_frame!(layout.size()).start_address.as_u64();
+        let frame = FRAME_ALLOCATOR
+            .get()
+            .unwrap()
+            .lock()
+            .allocate_frames(layout.size())
+            .ok_or(AllocError)?;
+        let frame_address = frame.start_address.as_u64();
         let virt_address = MEMORY_MAPPER.get().unwrap().physical_memory_offset + frame_address;
 
         let ptr = unsafe { NonNull::new_unchecked(virt_address.as_mut_ptr()) };
@@ -91,6 +96,14 @@ mod tests {
         field2: u64,
         field3: [u8; 1024],
     }
+    #[test(target = "qemu")]
+    fn test_unavailable_contiguous_dma_allocation() {
+        use super::{Allocator, DmaAllocator, Layout};
+
+        let layout = Layout::from_size_align(isize::MAX as usize, 1).unwrap();
+        assert!(DmaAllocator.allocate(layout).is_err());
+    }
+
     #[test(target = "qemu")]
     fn test_dma_allocator() {
         let block = Dma::<Block>::zeroed();

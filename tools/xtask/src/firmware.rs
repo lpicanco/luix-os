@@ -9,34 +9,11 @@ use tempfile::NamedTempFile;
 use ureq::tls::{RootCerts, TlsConfig};
 use ureq::Agent;
 
-const LIMINE_REVISION: &str = "ca3a5b20d2501e3819983c5cf838c70c30ee532a";
 const LIMINE: Asset = Asset {
-    name: "BOOTX64.EFI",
-    url: "https://raw.githubusercontent.com/luix-os/limine/ca3a5b20d2501e3819983c5cf838c70c30ee532a/BOOTX64.EFI",
-    sha256: "e9071610898f6a40be55e0aa60226b2a31ba763daf494ab29affc0ceae17bb54",
+    name: "limine-12.10.0-binary.tar.gz",
+    url: "https://github.com/luix-os/limine/releases/download/v12.10.0/limine-binary.tar.gz",
+    sha256: "365ba8785d4e4b55c3368738a642681b31f606afec9f77179e07fc26ebe841e2",
 };
-const LIMINE_LICENSE: Asset = Asset {
-    name: "Limine-LICENSE.txt",
-    url: "https://raw.githubusercontent.com/luix-os/limine/ca3a5b20d2501e3819983c5cf838c70c30ee532a/LICENSE",
-    sha256: "2da3926086b570229dd844ae2ed427d51fb8981b3e97625c19c1d507ba7648f9",
-};
-const LIMINE_BIOS: [Asset; 3] = [
-    Asset {
-        name: "limine.c",
-        url: "https://raw.githubusercontent.com/luix-os/limine/ca3a5b20d2501e3819983c5cf838c70c30ee532a/limine.c",
-        sha256: "e379a58290983c3e1355a3ecd004a755f1ab269a6fa7de87783b4c40daa5301b",
-    },
-    Asset {
-        name: "limine-bios-hdd.h",
-        url: "https://raw.githubusercontent.com/luix-os/limine/ca3a5b20d2501e3819983c5cf838c70c30ee532a/limine-bios-hdd.h",
-        sha256: "af8c911369ddca5e39154b708fafbf4e82ee329cdb5d3d6f3e2b701b3abda418",
-    },
-    Asset {
-        name: "limine-bios.sys",
-        url: "https://raw.githubusercontent.com/luix-os/limine/ca3a5b20d2501e3819983c5cf838c70c30ee532a/limine-bios.sys",
-        sha256: "66f02e013fe044f3a954cb72474c29796f6541d990019c23269068100044f556",
-    },
-];
 const OVMF: Asset = Asset {
     name: "OVMF.fd",
     url: "https://raw.githubusercontent.com/luix-os/edk2-nightly/b7099c7daab0ac05a8fdf1fd0dcb21212d3c9f77/bin/RELEASEX64_OVMF.fd",
@@ -65,18 +42,7 @@ struct Asset {
 }
 
 pub fn limine(cache: &Path) -> Result<PathBuf> {
-    let binary = LIMINE.ensure_cached(cache)?;
-    LIMINE_LICENSE.ensure_cached(cache)?;
-    Ok(binary)
-}
-
-pub fn bios(cache: &Path) -> Result<PathBuf> {
-    let source = cache.join(format!("limine-{LIMINE_REVISION}"));
-    LIMINE_LICENSE.ensure_cached(cache)?;
-    for asset in LIMINE_BIOS {
-        asset.ensure_cached(&source)?;
-    }
-    Ok(source)
+    LIMINE.ensure_cached(cache)
 }
 
 pub fn ovmf(cache: &Path) -> Result<PathBuf> {

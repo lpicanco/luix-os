@@ -13,6 +13,7 @@ use uuid::{uuid, Uuid};
 const SECTOR_BYTES: u16 = 512;
 const ESP_START_LBA: u64 = 2048;
 const ESP_TYPE: Uuid = uuid!("c12a7328-f81f-11d2-ba4b-00a0c93ec93b");
+const BIOS_BOOT_TYPE: Uuid = uuid!("21686148-6449-6e6f-744e-656564454649");
 
 pub fn write(
     output: &Path,
@@ -33,7 +34,7 @@ pub fn write(
     // The guest NVMe tests expect a 42 MiB namespace.
     let size_mib = if test { 42 } else { 64 };
     disk.as_file().set_len(size_mib * 1024 * 1024)?;
-    let (start, end) = make_gpt(disk.as_file_mut(), test)?;
+    let (start, end) = make_gpt(disk.as_file_mut(), test, bios.is_some())?;
     let mut partition = StreamSlice::new(BufStream::new(disk.as_file_mut()), start, end)?;
     let options = FormatVolumeOptions::new()
         .fat_type(FatType::Fat32)
@@ -54,8 +55,8 @@ pub fn write(
         copy_into(&files, &bin.join("init"), "boot/init")?;
         copy_into(
             &files,
-            &root.join("kernel/limine.cfg"),
-            "boot/limine/limine.cfg",
+            &root.join("kernel/limine.conf"),
+            "boot/limine/limine.conf",
         )?;
         copy_into(&files, bootx64, "EFI/BOOT/BOOTX64.EFI")?;
 
@@ -100,7 +101,7 @@ pub fn write(
     Ok(())
 }
 
-fn make_gpt(disk: &mut File, test: bool) -> Result<(u64, u64)> {
+fn make_gpt(disk: &mut File, test: bool, bios: bool) -> Result<(u64, u64)> {
     let sector_bytes = u64::from(SECTOR_BYTES);
     let mut gpt = GPT::new_from(disk, sector_bytes, Uuid::new_v4().to_bytes_le())?;
     let last_lba = gpt.header.last_usable_lba;
@@ -112,6 +113,16 @@ fn make_gpt(disk: &mut File, test: bool) -> Result<(u64, u64)> {
         attribute_bits: 0,
         partition_name: if test { "luix-os-test" } else { "" }.into(),
     };
+    if bios {
+        gpt[2] = GPTPartitionEntry {
+            partition_type_guid: BIOS_BOOT_TYPE.to_bytes_le(),
+            unique_partition_guid: Uuid::new_v4().to_bytes_le(),
+            starting_lba: gpt.header.first_usable_lba,
+            ending_lba: ESP_START_LBA - 1,
+            attribute_bits: 0,
+            partition_name: "BIOS boot".into(),
+        };
+    }
     gpt.write_into(disk)
         .context("write primary and backup GPT")?;
     GPT::write_protective_mbr_into(disk, sector_bytes).context("write protective MBR")?;

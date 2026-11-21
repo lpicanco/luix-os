@@ -6,9 +6,11 @@ use uuid::Uuid;
 #[cfg(target_os = "none")]
 use crate::drivers::fs::fat::Fat32FileSystem;
 #[cfg(target_os = "none")]
-use crate::drivers::nvme::NVME_CONTROLLERS;
+use crate::drivers::{BlockDevice, BLOCK_DEVICES};
 #[cfg(target_os = "none")]
 use crate::trace;
+#[cfg(target_os = "none")]
+use alloc::sync::Arc;
 
 mod fat;
 mod gpt;
@@ -21,11 +23,14 @@ static KERNEL_FILE_REQUEST: KernelFileRequest = KernelFileRequest::new();
 #[cfg(target_os = "none")]
 pub fn init() {
     // TODO: Replace the temporary FAT32 root mount with configurable mount points.
-    vfs::mount_root(find_boot_fs().expect("Failed to find boot fs"));
+    let (partition, device) = boot_partition().expect("Failed to find boot partition");
+    vfs::mount_root(
+        Fat32FileSystem::read_from_disk(partition, device).expect("Failed to mount boot fs"),
+    );
 }
 
 #[cfg(target_os = "none")]
-fn find_boot_fs() -> Result<Fat32FileSystem, vfs::Error> {
+fn boot_partition() -> Result<(gpt::GptPartitionEntry, Arc<dyn BlockDevice>), vfs::Error> {
     let boot_partition = KERNEL_FILE_REQUEST
         .get_response()
         .expect("Failed to get boot partition");
@@ -41,15 +46,20 @@ fn find_boot_fs() -> Result<Fat32FileSystem, vfs::Error> {
         .into();
 
     let mut error = vfs::Error::NotFound;
-    for controller in NVME_CONTROLLERS.read().iter() {
-        match gpt::GuidedPartitionTable::read_from_disk(controller.as_ref()) {
+    for device in BLOCK_DEVICES.get().unwrap() {
+        match gpt::GuidedPartitionTable::read_from_disk(device.as_ref()) {
             Ok(Some(gpt)) if gpt.disk_guid() == disk_id && gpt.partition_guid() == partition_id => {
                 trace!("Found boot partition: {:#?}", gpt.partition_guid());
-                return Fat32FileSystem::read_from_disk(gpt.entry, controller.clone());
+                return Ok((gpt.entry, device.clone()));
             }
             Err(_) => error = vfs::Error::Io,
             Ok(_) => {}
         }
     }
     Err(error)
+}
+
+#[cfg(all(test, target_os = "none"))]
+pub(super) fn test_boot_device() -> Arc<dyn BlockDevice> {
+    boot_partition().unwrap().1
 }

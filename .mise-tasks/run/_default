@@ -1,8 +1,14 @@
 #!/usr/bin/env bash
 #MISE description="Boot with UEFI"
 #MISE depends=["image", "setup:ovmf"]
+#USAGE arg "[controller]" help="Storage controller: nvme (default) or virtio-blk"
 set -euo pipefail
 # shellcheck source=../lib.sh
 source "$(dirname "${BASH_SOURCE[0]}")/../lib.sh"
 
-exec "${qemu_uefi[@]}" -drive "$(nvme_drive "$normal_image")"
+case ${1:-nvme} in
+    nvme) device=$nvme_device ;;
+    virtio-blk) device=virtio-blk-pci,drive=disk,disable-legacy=on ;;
+    *) echo "Expected nvme or virtio-blk" >&2; exit 2 ;;
+esac
+exec "${qemu_uefi[@]}" -device "$device"

@@ -126,12 +126,28 @@ impl PageTableEntry {
         self.entry |= 1 << 1;
     }
 
-    fn user_accessible(&self) -> bool {
+    pub(crate) fn user_accessible(&self) -> bool {
         (self.entry >> 2) & 1 == 1
     }
 
     pub fn set_user_accessible(&mut self) {
         self.entry |= 1 << 2;
+    }
+
+    pub(crate) fn set_uncacheable(&mut self) {
+        // x86 PAT index 3: PCD and PWT set for an uncached MMIO page.
+        self.entry = (self.entry & !(1 << 7)) | (1 << 4) | (1 << 3);
+    }
+
+    pub(crate) fn is_uncacheable(&self, shift: u32) -> bool {
+        let pat_bit = if shift == 12 { 7 } else { 12 };
+        self.entry & ((1 << pat_bit) | 0x18) == 0x18
+    }
+
+    pub(crate) fn leaf_address(&self, addr: VirtualAddress, shift: u32) -> PhysicalAddress {
+        let offset_mask = (1u64 << shift) - 1;
+        let base = self.entry & Self::PHYSICAL_ADDRESS_MASK & !offset_mask;
+        PhysicalAddress::new(base | (addr.as_u64() & offset_mask))
     }
 
     fn write_through(&self) -> bool {
@@ -234,6 +250,24 @@ mod tests {
             Some(Page::containing_address(VirtualAddress::new(0x3000)))
         );
         assert_eq!(iter.next(), None);
+    }
+
+    #[test]
+    fn mmio_leaf_cache_attributes() {
+        let mut small = PageTableEntry { entry: 1 << 7 };
+        small.set_uncacheable();
+        assert!(small.is_uncacheable(12));
+
+        for shift in [21, 30] {
+            let mut huge = PageTableEntry { entry: 0x8000_009b };
+            assert!(huge.is_uncacheable(shift));
+            huge.entry |= 1 << 12;
+            assert!(!huge.is_uncacheable(shift));
+            assert_eq!(
+                huge.leaf_address(VirtualAddress::new(0x2080), shift),
+                PhysicalAddress::new(0x8000_2080)
+            );
+        }
     }
 
     #[test]

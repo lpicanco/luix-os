@@ -150,30 +150,50 @@ impl Block {
 mod tests {
     use super::*;
 
-    #[test(target = "qemu")]
+    const HEAP_SIZE: usize = 2048;
+
+    /// Test-owned backing memory. These tests used to init the allocator at a
+    /// fixed address inside the live kernel heap, overwriting it under QEMU.
+    #[repr(C, align(16))]
+    struct TestHeap([u8; HEAP_SIZE]);
+
+    impl TestHeap {
+        fn new() -> Self {
+            Self([0; HEAP_SIZE])
+        }
+
+        fn start(&mut self) -> usize {
+            self.0.as_mut_ptr() as usize
+        }
+    }
+
+    #[test]
     fn test_init() {
+        let mut heap = TestHeap::new();
         let mut allocator = LinkedListAllocator::new();
-        unsafe { allocator.init(0xFEED_CAFF_000, 2048) };
+        unsafe { allocator.init(heap.start(), HEAP_SIZE) };
 
         assert_eq!(allocator.head.size, 0);
         assert!(allocator.head.next.is_some());
-        assert_eq!(allocator.head.next.unwrap().size, 2048);
+        assert_eq!(allocator.head.next.unwrap().size, HEAP_SIZE);
     }
 
-    #[test(target = "qemu")]
+    #[test]
     fn test_alloc_block() {
+        let mut heap = TestHeap::new();
+        let start = heap.start();
         let mut allocator = LinkedListAllocator::new();
         unsafe {
-            allocator.init(0xFEED_CAFF_000, 2048);
+            allocator.init(start, HEAP_SIZE);
             let a = allocator.alloc_block(Layout::from_size_align(1024, 1).unwrap());
             let b = allocator.alloc_block(Layout::from_size_align(256, 1).unwrap());
             let c = allocator.alloc_block(Layout::from_size_align(128, 1).unwrap());
             let d = allocator.alloc_block(Layout::from_size_align(64, 1).unwrap());
 
-            assert_eq!(a, Some(0xFEED_CAFF_000));
-            assert_eq!(b, Some(0xFEEDCAFF400));
-            assert_eq!(c, Some(0xFEEDCAFF500));
-            assert_eq!(d, Some(0xFEEDCAFF580));
+            assert_eq!(a, Some(start));
+            assert_eq!(b, Some(start + 0x400));
+            assert_eq!(c, Some(start + 0x500));
+            assert_eq!(d, Some(start + 0x580));
         };
 
         let next = allocator.head.next.unwrap();
@@ -181,11 +201,12 @@ mod tests {
         assert!(next.next.is_none());
     }
 
-    #[test(target = "qemu")]
+    #[test]
     fn test_dealloc_block() {
+        let mut heap = TestHeap::new();
         let mut allocator = LinkedListAllocator::new();
         unsafe {
-            allocator.init(0xFEED_CAFF_000, 2048);
+            allocator.init(heap.start(), HEAP_SIZE);
             let a = allocator
                 .alloc_block(Layout::from_size_align(512, 1).unwrap())
                 .unwrap();
@@ -202,8 +223,8 @@ mod tests {
 
         assert_eq!(allocator.head.size, 0);
 
-        let mut next = allocator.head.next.as_mut().unwrap();
-        assert_eq!(next.size, 2048);
+        let next = allocator.head.next.as_mut().unwrap();
+        assert_eq!(next.size, HEAP_SIZE);
         assert!(next.next.is_none());
     }
 }

@@ -1,10 +1,12 @@
 use core::fmt;
 use core::ops::{Index, IndexMut};
 
+#[cfg(target_os = "none")]
 use crate::arch::x86_64::registers;
 use crate::memory::address::{PhysicalAddress, VirtualAddress};
 use crate::memory::frame::PhysicalFrame;
 
+#[cfg(target_os = "none")]
 pub unsafe fn active_level_4_table(physical_memory_offset: u64) -> &'static mut PageTable {
     let cr3 = registers::read_cr3();
 
@@ -199,7 +201,7 @@ impl fmt::Display for PageTableEntry {
 mod tests {
     use super::*;
 
-    #[test(target = "qemu")]
+    #[test]
     fn test_page_containing_address() {
         let page = Page::containing_address(VirtualAddress::new(0x1000));
         assert_eq!(page.start_address, VirtualAddress::new(0x1000));
@@ -208,7 +210,7 @@ mod tests {
         assert_eq!(page.start_address, VirtualAddress::new(0x1000));
     }
 
-    #[test(target = "qemu")]
+    #[test]
     fn test_page_level() {
         let page = Page::containing_address(VirtualAddress::new(0xDEAD_BEEF));
         assert_eq!(page.p1_index(), 0xDB);
@@ -217,7 +219,7 @@ mod tests {
         assert_eq!(page.p4_index(), 0x0);
     }
 
-    #[test(target = "qemu")]
+    #[test]
     fn test_page_iter() {
         let start = Page::containing_address(VirtualAddress::new(0x1000));
         let end = Page::containing_address(VirtualAddress::new(0x3005));
@@ -234,7 +236,7 @@ mod tests {
         assert_eq!(iter.next(), None);
     }
 
-    #[test(target = "qemu")]
+    #[test]
     fn test_page_table_entry() {
         let mut entry = PageTableEntry::new();
         assert_eq!(entry.is_unused(), true);

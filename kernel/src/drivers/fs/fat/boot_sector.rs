@@ -76,11 +76,11 @@ impl Fat32BootSector {
             / self.bios_parameter_block.bytes_per_sector() as u32
     }
 
+    /// First sector of the data region (cluster 2), relative to the partition start.
     pub fn first_data_sector(&self) -> usize {
         self.bios_parameter_block.reserved_sectors() as usize
             + (self.bios_parameter_block.fat_count as usize * self.sectors_per_fat() as usize)
             + self.root_dir_sectors() as usize
-            - self.root_cluster_number as usize
     }
 
     fn starting_fat_sector(&self) -> u32 {
@@ -88,7 +88,7 @@ impl Fat32BootSector {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, target_os = "none"))]
 mod tests {
     use crate::drivers::fs::gpt::GuidedPartitionTable;
     use crate::drivers::nvme::NVME_CONTROLLERS;
@@ -124,8 +124,9 @@ mod tests {
         );
 
         assert_eq!(bs.root_dir_sectors(), 0);
-        let root_cluster_sector = (bs.first_data_sector() + bs.root_cluster_number as usize) as u64;
-        let data_sectors = partition_sectors.checked_sub(root_cluster_sector).unwrap();
+        let data_sectors = partition_sectors
+            .checked_sub(bs.first_data_sector() as u64)
+            .unwrap();
         let fat_entries = u64::from(bs.sectors_per_fat())
             * u64::from(bs.bios_parameter_block.bytes_per_sector())
             / 4;

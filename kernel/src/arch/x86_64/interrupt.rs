@@ -33,7 +33,7 @@ pub(crate) fn init() {
         idt.set_division_error_handler(divide_by_zero_handler);
         idt.set_double_fault_handler(double_fault_handler);
         idt.set_general_protection_fault_handler(general_protection_fault_handler);
-        idt.set_overflow_handler(double_fault_handler);
+        idt.set_overflow_handler(overflow_handler);
         idt.set_page_fault_handler(page_fault_handler);
 
         idt.set_handler(InterruptVector::Timer as usize, timer_interrupt_handler);
@@ -55,44 +55,46 @@ pub(crate) fn init() {
 extern "x86-interrupt" fn divide_by_zero_handler(interrupt_frame: InterruptFrame) {
     println!("Error: Divide by zero.\n{}", interrupt_frame);
 
-    loop {
-        unsafe {
-            asm!("hlt");
-        }
-    }
+    halt_on_fault()
 }
 
-extern "x86-interrupt" fn double_fault_handler(interrupt_frame: InterruptFrame) {
-    println!("Error: Double fault.\n{}", interrupt_frame);
-
-    loop {
-        unsafe {
-            asm!("hlt");
-        }
-    }
+extern "x86-interrupt" fn overflow_handler(interrupt_frame: InterruptFrame) {
+    println!("Error: Overflow.\n{}", interrupt_frame);
+    halt_on_fault()
 }
 
-extern "x86-interrupt" fn general_protection_fault_handler(interrupt_frame: InterruptFrame) {
-    println!("Error: General protection fault.\n{}", interrupt_frame);
-
-    loop {
-        unsafe {
-            asm!("hlt");
-        }
-    }
-}
-
-extern "x86-interrupt" fn page_fault_handler(interrupt_frame: InterruptFrame) {
+extern "x86-interrupt" fn double_fault_handler(interrupt_frame: InterruptFrame, error_code: u64) {
     println!(
-        "Error: Page fault at {}\n{}",
+        "Error: Double fault (code {:#x}).\n{}",
+        error_code, interrupt_frame
+    );
+    halt_on_fault()
+}
+
+extern "x86-interrupt" fn general_protection_fault_handler(
+    interrupt_frame: InterruptFrame,
+    error_code: u64,
+) {
+    println!(
+        "Error: General protection fault (code {:#x}).\n{}",
+        error_code, interrupt_frame
+    );
+    halt_on_fault()
+}
+
+extern "x86-interrupt" fn page_fault_handler(interrupt_frame: InterruptFrame, error_code: u64) {
+    println!(
+        "Error: Page fault at {} (code {:#x}).\n{}",
         registers::read_cr2(),
+        error_code,
         interrupt_frame
     );
+    halt_on_fault()
+}
 
+fn halt_on_fault() -> ! {
     loop {
-        unsafe {
-            asm!("hlt");
-        }
+        super::instructions::halt();
     }
 }
 
@@ -159,4 +161,18 @@ pub extern "x86-interrupt" fn syscall_handler_naked_wrap(_interrupt_frame: Inter
 pub extern "C" fn syscall_handler(interrupt_frame: &mut InterruptFrame, regs: &mut Registers) {
     let ret = syscall::dispatcher(interrupt_frame, regs, regs.rax, regs.rdi, regs.rsi);
     regs.rax = ret;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test(target = "qemu")]
+    fn exception_gates() {
+        let idt = IDT.get().unwrap();
+        idt.assert_gate(4, overflow_handler as *const () as u64, 0);
+        idt.assert_gate(8, double_fault_handler as *const () as u64, 1);
+        idt.assert_gate(13, general_protection_fault_handler as *const () as u64, 0);
+        idt.assert_gate(14, page_fault_handler as *const () as u64, 0);
+    }
 }

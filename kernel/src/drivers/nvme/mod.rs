@@ -23,7 +23,12 @@ pub(crate) fn init() {
             device.enable_mmio();
 
             let mut controller = NvmeController::new(device.read_bar0_memory_address());
-            controller.init();
+            if let Err(status) = controller.init() {
+                println!(
+                    "Skipping NVMe controller after admin command failed (status {status:#x})"
+                );
+                return;
+            }
             println!(
                 "NVMe Controller initialized. Total capacity: {}MB. Serial number: {}",
                 controller.namespaces[0].size / 1024 / 1024,

@@ -57,8 +57,8 @@ pub struct PciDevice {
     bus: u8,
     device: u8,
     function: u8,
-    vendor_id: u16,
-    device_id: u16,
+    pub(crate) vendor_id: u16,
+    pub(crate) device_id: u16,
     class_code: u8,
     pub subclass: u8,
     bars: [u32; 6],
@@ -67,19 +67,79 @@ pub struct PciDevice {
 
 impl PciDevice {
     pub fn enable_bus_mastering(&self) {
-        let mut command = self.read(0x04);
-        command.write_bit(2, true);
-        self.write(0x04, command);
+        self.set_command_bit(2);
     }
 
     pub fn enable_mmio(&self) {
-        let mut command = self.read(0x04);
-        command.write_bit(1, true);
+        self.set_command_bit(1);
+    }
+
+    pub(crate) fn disable_legacy_interrupts(&self) {
+        self.set_command_bit(10);
+    }
+
+    fn set_command_bit(&self, bit: usize) {
+        // Write zeros to the write-one-to-clear PCI status bits above command.
+        let mut command = self.read(0x04) & 0xffff;
+        command.write_bit(bit, true);
         self.write(0x04, command);
     }
 
-    pub fn capabilities(&self) -> CapabilitiesIter {
+    pub fn capabilities(&self) -> CapabilitiesIter<'_> {
         CapabilitiesIter::new(self)
+    }
+
+    /// Probe a memory BAR on a type 0 PCI function before starting its driver.
+    pub(crate) fn memory_bar(&self, index: u8) -> Option<(u64, u64)> {
+        if self.header_type & 0x7f != 0 || index >= 6 {
+            return None;
+        }
+        // Skip high dwords of 64-bit BARs: they are not independent resources.
+        let mut slot = 0;
+        while slot < index {
+            let lower = self.bars[usize::from(slot)];
+            slot += if lower & 7 == 4 { 2 } else { 1 };
+        }
+        if slot != index {
+            return None;
+        }
+        let low = self.bars[usize::from(index)];
+        let wide = match low & 7 {
+            0 => false,
+            4 if index < 5 => true,
+            _ => return None,
+        };
+        let high = if wide {
+            self.bars[usize::from(index + 1)]
+        } else {
+            0
+        };
+        let base = (u64::from(high) << 32) | u64::from(low & !0xf);
+        if base == 0 {
+            return None;
+        }
+
+        let offset = 0x10 + index * 4;
+        let command = self.read(0x04) & 0xffff;
+        self.write(0x04, command & !3);
+        self.write(offset, u32::MAX);
+        if wide {
+            self.write(offset + 4, u32::MAX);
+        }
+        let mask_low = self.read(offset) & !0xf;
+        let mask_high = if wide {
+            self.read(offset + 4)
+        } else {
+            u32::MAX
+        };
+        self.write(offset, low);
+        if wide {
+            self.write(offset + 4, high);
+        }
+        self.write(0x04, command);
+        let mask = (u64::from(mask_high) << 32) | u64::from(mask_low);
+        let size = mask.wrapping_neg();
+        (size.is_power_of_two() && base.is_multiple_of(size)).then_some((base, size))
     }
 
     pub fn read_bar0_memory_address(&self) -> PhysicalAddress {

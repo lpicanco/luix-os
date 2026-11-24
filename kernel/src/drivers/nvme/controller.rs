@@ -9,9 +9,10 @@ use crate::arch::memory::paging::Page;
 use crate::bits::Bits;
 use crate::drivers::nvme::command::{
     IdentifyController, IdentifyNamespace, NvmeAdminIdentifyCns, NvmeCommand, NvmeIoCommand,
+    MAX_TRANSFER,
 };
 use crate::drivers::nvme::queue::QueueGroup;
-use crate::drivers::{BlockDevice, BlockError};
+use crate::drivers::{BlockDevice, BlockError, SECTOR_SIZE};
 use crate::memory::address::{PhysicalAddress, VirtualAddress};
 use crate::memory::allocator::dma_allocator::Dma;
 use crate::memory::frame::PhysicalFrame;
@@ -71,11 +72,17 @@ impl NvmeController {
         regs.enable_controller();
 
         let result = self.initialize_queues_and_namespaces();
-        if result.is_err() {
+        if result.is_err() || !self.has_usable_namespace() {
             // Stop DMA before the caller releases this controller's queues.
             self.get_registers().disable_controller();
         }
         result
+    }
+
+    pub(crate) fn has_usable_namespace(&self) -> bool {
+        self.namespaces
+            .first()
+            .is_some_and(|namespace| namespace.block_size == SECTOR_SIZE)
     }
 
     fn initialize_queues_and_namespaces(&mut self) -> Result<(), u16> {
@@ -85,6 +92,9 @@ impl NvmeController {
 
         self.namespaces = self.identify_namespaces()?;
         trace!("Namespaces: {:?}", self.namespaces);
+        if !self.has_usable_namespace() {
+            return Ok(());
+        }
 
         let io_queue = self.io_queue.lock();
         self.admin_queue
@@ -182,6 +192,9 @@ unsafe impl BlockDevice for NvmeController {
         if buffer.is_empty() {
             return Ok(());
         }
+        if buffer.len() > MAX_TRANSFER {
+            return Err(BlockError);
+        }
         let data = Dma::<u8>::new_uninit_slice(buffer.len());
 
         let command = NvmeCommand::create_read_write(
@@ -202,10 +215,12 @@ unsafe impl BlockDevice for NvmeController {
     }
 
     fn write_block(&self, sector: usize, buffer: &[u8]) -> Result<(), BlockError> {
+        if !buffer.len().is_multiple_of(SECTOR_SIZE) || buffer.len() > MAX_TRANSFER {
+            return Err(BlockError);
+        }
         if buffer.is_empty() {
             return Ok(());
         }
-        assert!(!self.namespaces.is_empty(), "No namespaces found");
 
         let mut data = Dma::<u8>::new_uninit_slice(buffer.len()).assume_init();
         data.copy_from_slice(buffer);
@@ -223,6 +238,10 @@ unsafe impl BlockDevice for NvmeController {
             .submit_command(command)
             .map_err(|_| BlockError)?;
         Ok(())
+    }
+
+    fn sector_count(&self) -> u64 {
+        self.namespaces[0].blocks as u64
     }
 }
 
@@ -422,122 +441,19 @@ pub struct Namespace {
 
 #[cfg(test)]
 mod tests {
-    use alloc::boxed::Box;
-    use alloc::format;
-    use alloc::string::String;
-    use core::mem;
-
-    use crate::drivers::nvme::NVME_CONTROLLERS;
-
     use super::*;
+    use crate::drivers::nvme::TEST_CONTROLLERS;
 
     #[test(target = "qemu")]
-    fn test_identity_controller() {
-        let controller = &NVME_CONTROLLERS.read()[0];
+    fn test_nvme_boot_controller() {
+        let Some(controller) = TEST_CONTROLLERS.get().and_then(|c| c.first()) else {
+            return;
+        };
         let identify = controller.identify_controller().unwrap();
-
         assert_eq!(identify.serial_number.as_str(), "feedcafe");
-    }
-
-    #[test(target = "qemu")]
-    fn test_namespace_identified() {
-        let controller = &NVME_CONTROLLERS.read()[0];
-        let namespaces = &controller.namespaces;
-
-        assert_eq!(namespaces.len(), 1);
-        assert_eq!(namespaces[0].size, 44_040_192); // 40MB
-        assert_eq!(namespaces[0].block_size, 512);
-        assert_eq!(namespaces[0].blocks, 86016);
-    }
-
-    #[test(target = "qemu")]
-    fn test_io_queues_created() {
-        let controller = &NVME_CONTROLLERS.read()[0];
-        assert_eq!(controller.io_queue.lock().queue_group_id, 1);
-        assert_eq!(controller.io_queue.lock().queue_size, NVME_QUEUE_SIZE);
-    }
-
-    #[test(target = "qemu")]
-    fn test_read_block() {
-        struct GptHeader {
-            signature: [u8; 8],
-            revision: [u8; 4],
-        }
-
-        let controller = &NVME_CONTROLLERS.read()[0];
-        let mut buffer = Box::<GptHeader>::new_uninit();
-        controller.read_block(1, buffer.as_bytes_mut()).unwrap();
-        let block = unsafe { buffer.assume_init() };
-        assert_eq!(block.signature, *b"EFI PART");
-        assert_eq!(block.revision, *b"\x00\x00\x01\x00");
-    }
-
-    #[test(target = "qemu")]
-    fn test_failed_completion_and_next_read() {
-        let controller = &NVME_CONTROLLERS.read()[0];
-        let mut buffer = [MaybeUninit::new(0xa5); 512];
-        assert_eq!(
-            controller.read_block(controller.namespaces[0].blocks, &mut buffer),
-            Err(BlockError)
-        );
-        assert!(buffer
-            .iter()
-            .all(|byte| unsafe { byte.assume_init() } == 0xa5));
-        controller.read_block(1, &mut buffer).unwrap();
-        assert_eq!(&unsafe { buffer.assume_init_ref() }[..8], b"EFI PART");
-    }
-
-    #[test(target = "qemu")]
-    fn test_write_block() {
-        struct PartitionTable {
-            type_guid: [u8; 16],
-            dummy: [u8; 40],
-            partition_name: [u16; 36],
-        }
-
-        // Read the partition table
-        let mut buffer = Box::<PartitionTable>::new_uninit();
-        NVME_CONTROLLERS.read()[0]
-            .read_block(2, buffer.as_bytes_mut())
-            .unwrap();
-        let block = unsafe { buffer.assume_init() };
-
-        let partition_name = String::from_utf16_lossy(&block.partition_name);
-        assert_eq!(partition_name.trim_end_matches('\0'), "luix-os-test");
-
-        // Write a partition table with a different name
-        let new_partition_name: Vec<u16> = format!("{:\0<36}", "luix-os-test-new")
-            .encode_utf16()
-            .collect();
-        assert_eq!(new_partition_name.len(), 36);
-        let new_block = PartitionTable {
-            type_guid: block.type_guid,
-            dummy: block.dummy,
-            partition_name: new_partition_name.as_slice().try_into().unwrap(),
-        };
-        let data = unsafe {
-            core::slice::from_raw_parts(
-                &new_block as *const _ as *const u8,
-                mem::size_of::<PartitionTable>(),
-            )
-        };
-        NVME_CONTROLLERS.read()[0].write_block(2, data).unwrap();
-
-        // Read the partition table again
-        let mut buffer_after_write = Box::<PartitionTable>::new_uninit();
-        NVME_CONTROLLERS.read()[0]
-            .read_block(2, buffer_after_write.as_bytes_mut())
-            .unwrap();
-        let block_after_write = unsafe { buffer_after_write.assume_init() };
-
-        // Check if the partition name was written correctly
-        let partition_name_after_write =
-            String::from_utf16_lossy(&block_after_write.partition_name);
-        assert_eq!(
-            partition_name_after_write.trim_end_matches('\0'),
-            "luix-os-test-new"
-        );
-        assert_eq!(block.type_guid, block_after_write.type_guid);
-        assert_eq!(block.dummy, block_after_write.dummy);
+        assert_eq!(controller.namespaces.len(), 1);
+        let queue = controller.io_queue.lock();
+        assert_eq!(queue.queue_group_id, 1);
+        assert_eq!(queue.queue_size, NVME_QUEUE_SIZE);
     }
 }

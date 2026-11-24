@@ -7,6 +7,13 @@ use crate::arch::registers::read_cr3;
 use crate::memory::address::{PhysicalAddress, VirtualAddress};
 use crate::memory::frame::PhysicalFrame;
 
+struct Mapping {
+    physical: PhysicalAddress,
+    uncached: bool,
+    writable: bool,
+    user_accessible: bool,
+}
+
 pub struct MemoryMapper {
     pub physical_memory_offset: VirtualAddress,
 }
@@ -19,46 +26,35 @@ impl MemoryMapper {
     }
 
     pub fn translate_addr(&self, addr: VirtualAddress) -> Option<PhysicalAddress> {
+        self.mapping(addr).map(|mapping| mapping.physical)
+    }
+
+    fn mapping(&self, addr: VirtualAddress) -> Option<Mapping> {
         let mut frame = PhysicalFrame::containing_address(read_cr3());
-
-        let table_indexes = [
-            addr.p4_index(),
-            addr.p3_index(),
-            addr.p2_index(),
-            addr.p1_index(),
-        ];
-
-        for (i, &index) in table_indexes.iter().enumerate() {
-            let page_table_virt = self.physical_memory_offset + frame.start_address.as_u64();
-
-            let page_table_ptr: *const PageTable = page_table_virt.as_ptr();
-            let page_table = unsafe { &*page_table_ptr };
-            let page_table_entry = &page_table[index as usize];
-
-            if page_table_entry.huge_page() {
-                return match i {
-                    // P3: 1GiB page
-                    1 => {
-                        let offset = addr.as_u64() & 0o_777_777_7777;
-                        Some(page_table_entry.frame().unwrap().start_address + offset)
-                    }
-                    // P2: 2MiB page
-                    2 => {
-                        let offset = addr.as_u64() & 0o_777_7777;
-                        Some(page_table_entry.frame().unwrap().start_address + offset)
-                    }
-                    _ => None,
-                };
-            } else {
-                frame = match page_table_entry.frame() {
-                    Some(frame) => frame,
-                    None => return None,
-                };
+        let mut writable = true;
+        let mut user_accessible = true;
+        for (index, shift) in [
+            (addr.p4_index(), 39),
+            (addr.p3_index(), 30),
+            (addr.p2_index(), 21),
+            (addr.p1_index(), 12),
+        ] {
+            let table = self.physical_memory_offset + frame.start_address.as_u64();
+            let table = unsafe { &*table.as_ptr::<PageTable>() };
+            let entry = &table[usize::from(index)];
+            frame = entry.frame()?;
+            writable &= entry.writable();
+            user_accessible &= entry.user_accessible();
+            if shift == 12 || (shift != 39 && entry.huge_page()) {
+                return Some(Mapping {
+                    physical: entry.leaf_address(addr, shift),
+                    uncached: entry.is_uncacheable(shift),
+                    writable,
+                    user_accessible,
+                });
             }
         }
-
-        // Calculate the physical address by adding the page offset
-        Some(frame.start_address + addr.page_offset())
+        None
     }
 
     pub(crate) fn map_page(
@@ -67,6 +63,38 @@ impl MemoryMapper {
         frame: PhysicalFrame,
         user_accessible: bool,
         writable: bool,
+    ) {
+        self.map_page_with_cache(page, frame, user_accessible, writable, false);
+    }
+
+    pub(crate) fn map_mmio_page(&self, page: Page, frame: PhysicalFrame) -> Option<()> {
+        let physical = frame.start_address;
+        // Limine can also install a low identity alias. Cacheable and uncacheable
+        // mappings of the same device registers must never be active together.
+        if physical.as_u64() < 1 << 47 {
+            if let Some(alias) = self.mapping(VirtualAddress::new(physical.as_u64())) {
+                if alias.physical == physical && (!alias.uncached || alias.user_accessible) {
+                    return None;
+                }
+            }
+        }
+        match self.mapping(page.start_address) {
+            Some(m) => (m.physical == physical && m.uncached && m.writable && !m.user_accessible)
+                .then_some(()),
+            None => {
+                self.map_page_with_cache(page, frame, false, true, true);
+                Some(())
+            }
+        }
+    }
+
+    fn map_page_with_cache(
+        &self,
+        page: Page,
+        frame: PhysicalFrame,
+        user_accessible: bool,
+        writable: bool,
+        uncached: bool,
     ) {
         let mut current_frame = PhysicalFrame::containing_address(read_cr3());
         let table_indexes = [
@@ -110,6 +138,9 @@ impl MemoryMapper {
                     }
                 }
             };
+            if uncached && i == 3 {
+                page_table_entry.set_uncacheable();
+            }
             self.map_page_entry(
                 page_table_entry,
                 current_frame.clone(),
@@ -191,6 +222,15 @@ mod tests {
 
         let phys = mapper.translate_addr(VirtualAddress::new(0xFEED_DEAD_0000));
         assert_eq!(phys, None);
+    }
+
+    #[test(target = "qemu")]
+    fn mmio_rejects_existing_ram_mapping() {
+        let mapper = MEMORY_MAPPER.get().unwrap();
+        let frame = PhysicalFrame::containing_address(read_cr3());
+        let page =
+            Page::containing_address(mapper.physical_memory_offset + frame.start_address.as_u64());
+        assert_eq!(mapper.map_mmio_page(page, frame), None);
     }
 
     #[test(target = "qemu")]

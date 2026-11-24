@@ -277,9 +277,7 @@ mod tests {
     use core::mem::MaybeUninit;
 
     #[cfg(target_os = "none")]
-    use crate::drivers::fs::gpt::GuidedPartitionTable;
-    #[cfg(target_os = "none")]
-    use crate::drivers::nvme::NVME_CONTROLLERS;
+    use crate::drivers::fs::boot_partition;
 
     use super::*;
 
@@ -315,6 +313,10 @@ mod tests {
 
         fn write_block(&self, _sector: usize, _buffer: &[u8]) -> Result<(), BlockError> {
             Err(BlockError)
+        }
+
+        fn sector_count(&self) -> u64 {
+            (self.0.len() / RAM_SECTOR) as u64
         }
     }
 
@@ -439,11 +441,8 @@ mod tests {
 
     #[test(target = "qemu")]
     fn test_fat_area_cluster_chain_iter() {
-        let controller = NVME_CONTROLLERS.read()[0].clone();
-        let gpt = GuidedPartitionTable::read_from_disk(controller.as_ref())
-            .unwrap()
-            .unwrap();
-        let fs = Fat32FileSystem::read_from_disk(gpt.entry, controller).unwrap();
+        let (partition, device) = boot_partition().unwrap();
+        let fs = Fat32FileSystem::read_from_disk(partition, device).unwrap();
 
         let small_file = fs
             .stat(&Path::new("/test/deep/inside/deepfile.txt").unwrap())
@@ -468,11 +467,8 @@ mod tests {
 
     #[test(target = "qemu")]
     fn test_find_file_on_root() {
-        let controller = NVME_CONTROLLERS.read()[0].clone();
-        let gpt = GuidedPartitionTable::read_from_disk(controller.as_ref())
-            .unwrap()
-            .unwrap();
-        let fs = Fat32FileSystem::read_from_disk(gpt.entry, controller.clone()).unwrap();
+        let (partition, device) = boot_partition().unwrap();
+        let fs = Fat32FileSystem::read_from_disk(partition, device).unwrap();
         let entry = fs.find_entry(&Path::new("/README.md").unwrap());
         assert!(entry.is_ok());
         assert_eq!(entry.unwrap().file_name(), "README.MD");
@@ -480,11 +476,8 @@ mod tests {
 
     #[test(target = "qemu")]
     fn test_stat() {
-        let controller = NVME_CONTROLLERS.read()[0].clone();
-        let gpt = GuidedPartitionTable::read_from_disk(controller.as_ref())
-            .unwrap()
-            .unwrap();
-        let fs = Fat32FileSystem::read_from_disk(gpt.entry, controller.clone()).unwrap();
+        let (partition, device) = boot_partition().unwrap();
+        let fs = Fat32FileSystem::read_from_disk(partition, device).unwrap();
         let entry = fs.stat(&Path::new("/test/deep/inside/deepfile.txt").unwrap());
         assert!(entry.is_ok());
         let entry = entry.unwrap();
@@ -494,11 +487,8 @@ mod tests {
 
     #[test(target = "qemu")]
     fn test_open() {
-        let controller = NVME_CONTROLLERS.read()[0].clone();
-        let gpt = GuidedPartitionTable::read_from_disk(controller.as_ref())
-            .unwrap()
-            .unwrap();
-        let fs = Fat32FileSystem::read_from_disk(gpt.entry, controller.clone()).unwrap();
+        let (partition, device) = boot_partition().unwrap();
+        let fs = Fat32FileSystem::read_from_disk(partition, device).unwrap();
         let entry = fs
             .open(&Path::new("/test/deep/inside/deepfile.txt").unwrap())
             .unwrap();
@@ -509,11 +499,8 @@ mod tests {
 
     #[test(target = "qemu")]
     fn test_read() {
-        let controller = NVME_CONTROLLERS.read()[0].clone();
-        let gpt = GuidedPartitionTable::read_from_disk(controller.as_ref())
-            .unwrap()
-            .unwrap();
-        let fs = Fat32FileSystem::read_from_disk(gpt.entry, controller.clone()).unwrap();
+        let (partition, device) = boot_partition().unwrap();
+        let fs = Fat32FileSystem::read_from_disk(partition, device).unwrap();
         let entry = fs
             .open(&Path::new("/test/deep/inside/deepfile.txt").unwrap())
             .unwrap();
@@ -530,11 +517,8 @@ mod tests {
 
     #[test(target = "qemu")]
     fn test_find_file_deep_inside() {
-        let controller = NVME_CONTROLLERS.read()[0].clone();
-        let gpt = GuidedPartitionTable::read_from_disk(controller.as_ref())
-            .unwrap()
-            .unwrap();
-        let fs = Fat32FileSystem::read_from_disk(gpt.entry, controller).unwrap();
+        let (partition, device) = boot_partition().unwrap();
+        let fs = Fat32FileSystem::read_from_disk(partition, device).unwrap();
 
         let entry = fs.find_entry(&Path::new("/test/deep/inside/deepfile.txt").unwrap());
         assert!(entry.is_ok());
@@ -545,13 +529,10 @@ mod tests {
 
     #[test(target = "qemu")]
     fn test_directory_walker() {
-        let controller = NVME_CONTROLLERS.read()[0].clone();
-        let gpt = GuidedPartitionTable::read_from_disk(controller.as_ref())
-            .unwrap()
-            .unwrap();
-        let fs = Fat32FileSystem::read_from_disk(gpt.entry, controller.clone()).unwrap();
+        let (partition, device) = boot_partition().unwrap();
+        let fs = Fat32FileSystem::read_from_disk(partition, device).unwrap();
 
-        let mut walker = DirectoryWalker::new(2, &fs.fat_area, controller.clone())
+        let mut walker = DirectoryWalker::new(2, &fs.fat_area, fs.block_device.clone())
             .map(Result::unwrap)
             .filter(|entry| !entry.is_long_name());
 
@@ -563,9 +544,10 @@ mod tests {
         assert_eq!(walker.next().unwrap().name, "LONG-D~1");
         assert_eq!(walker.next().unwrap().name, "README");
 
-        let mut walker = DirectoryWalker::new(test_dir.cluster(), &fs.fat_area, controller)
-            .map(Result::unwrap)
-            .filter(|entry| !entry.is_long_name());
+        let mut walker =
+            DirectoryWalker::new(test_dir.cluster(), &fs.fat_area, fs.block_device.clone())
+                .map(Result::unwrap)
+                .filter(|entry| !entry.is_long_name());
 
         assert_eq!(walker.next().unwrap().name, ".");
         assert_eq!(walker.next().unwrap().name, "..");

@@ -6,4 +6,4 @@ set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 echo "gdb $bin/kernel -ex 'target remote localhost:1234'"
-exec "${qemu_uefi[@]}" -drive "$(nvme_drive "$normal_image")" -S -gdb tcp:127.0.0.1:1234
+exec "${qemu_uefi[@]}" -device "$nvme_device" -S -gdb tcp:127.0.0.1:1234

@@ -82,13 +82,13 @@ impl GuidedPartitionTable {
 mod tests {
     use alloc::string::{String, ToString};
 
-    use crate::drivers::nvme::NVME_CONTROLLERS;
+    use crate::drivers::fs::test_boot_device;
 
     use super::*;
 
     #[test(target = "qemu")]
     fn test_read_from_disk() {
-        let controller = &NVME_CONTROLLERS.read()[0];
+        let controller = test_boot_device();
         let gpt = GuidedPartitionTable::read_from_disk(controller.as_ref())
             .unwrap()
             .unwrap();

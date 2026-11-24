@@ -67,25 +67,26 @@ pub struct PciDevice {
 
 impl PciDevice {
     pub fn enable_bus_mastering(&self) {
-        let mut command = self.read(0x04);
-        command.write_bit(2, true);
-        self.write(0x04, command);
+        self.set_command_bit(2);
     }
 
     pub fn enable_mmio(&self) {
-        let mut command = self.read(0x04);
-        command.write_bit(1, true);
+        self.set_command_bit(1);
+    }
+
+    pub(crate) fn disable_legacy_interrupts(&self) {
+        self.set_command_bit(10);
+    }
+
+    fn set_command_bit(&self, bit: usize) {
+        // Write zeros to the write-one-to-clear PCI status bits above command.
+        let mut command = self.read(0x04) & 0xffff;
+        command.write_bit(bit, true);
         self.write(0x04, command);
     }
 
     pub fn capabilities(&self) -> CapabilitiesIter<'_> {
         CapabilitiesIter::new(self)
-    }
-
-    pub(crate) fn enable_polled_dma(&self) {
-        // Write zeros to the write-one-to-clear PCI status bits above command.
-        let command = self.read(0x04) & 0xffff;
-        self.write(0x04, command | (1 << 1) | (1 << 2) | (1 << 10));
     }
 
     /// Probe a memory BAR on a type 0 PCI function before starting its driver.

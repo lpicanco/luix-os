@@ -314,6 +314,10 @@ mod tests {
         fn write_block(&self, _sector: usize, _buffer: &[u8]) -> Result<(), BlockError> {
             Err(BlockError)
         }
+
+        fn sector_count(&self) -> u64 {
+            (self.0.len() / RAM_SECTOR) as u64
+        }
     }
 
     fn ram_cluster_offset(cluster: usize) -> usize {

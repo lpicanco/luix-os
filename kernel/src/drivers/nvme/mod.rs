@@ -1,18 +1,20 @@
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 
-use crate::drivers::BlockDevice;
-
 use crate::drivers::nvme::controller::NvmeController;
 use crate::drivers::pci::PCI_DRIVER;
+use crate::drivers::{BlockDevice, SECTOR_SIZE};
 use crate::{pci_device, println};
 
 mod command;
 mod controller;
 mod queue;
 
+#[cfg(test)]
+static TEST_CONTROLLERS: spin::Once<Vec<Arc<NvmeController>>> = spin::Once::new();
+
 pub(super) fn init() -> Vec<Arc<dyn BlockDevice>> {
-    let mut devices: Vec<Arc<dyn BlockDevice>> = Vec::new();
+    let mut controllers = Vec::new();
     const SUBCLASS_NVME: u8 = 0x08;
 
     pci_device!()
@@ -29,9 +31,11 @@ pub(super) fn init() -> Vec<Arc<dyn BlockDevice>> {
                 );
                 return;
             }
-            let Some(namespace) = controller.namespaces.first() else {
+            if !controller.has_usable_namespace() {
+                println!("Skipping NVMe controller without a {SECTOR_SIZE}-byte block namespace");
                 return;
-            };
+            }
+            let namespace = &controller.namespaces[0];
             println!(
                 "NVMe Controller initialized. Total capacity: {}MB. Serial number: {}",
                 namespace.size / 1024 / 1024,
@@ -42,7 +46,12 @@ pub(super) fn init() -> Vec<Arc<dyn BlockDevice>> {
                     .serial_number
             );
 
-            devices.push(Arc::new(controller));
+            controllers.push(Arc::new(controller));
         });
-    devices
+    #[cfg(test)]
+    TEST_CONTROLLERS.call_once(|| controllers.clone());
+    controllers
+        .into_iter()
+        .map(|controller| controller as Arc<dyn BlockDevice>)
+        .collect()
 }

@@ -20,6 +20,9 @@ const QUEUE_DRIVER: u64 = 40;
 const QUEUE_DEVICE: u64 = 48;
 const COMMON_LENGTH: u32 = 56;
 
+// The result of sizing a BAR: its base and length, or `None` when it is not usable memory.
+type Bar = Option<(u64, u64)>;
+
 #[derive(Clone, Copy)]
 struct Region {
     physical: u64,
@@ -27,8 +30,10 @@ struct Region {
 }
 
 impl Region {
-    fn from_cap(device: &PciDevice, cap: u8) -> Option<Self> {
-        let (base, bar_size) = device.memory_bar(device.read(cap + 4) as u8)?;
+    fn from_cap(device: &PciDevice, cap: u8, bars: &mut [Option<Bar>; 6]) -> Option<Self> {
+        let index = device.read(cap + 4) as u8;
+        let bar = bars.get_mut(usize::from(index))?;
+        let (base, bar_size) = (*bar.get_or_insert_with(|| device.memory_bar(index)))?;
         let offset = u64::from(device.read(cap + 8));
         let length = device.read(cap + 12);
         if offset + u64::from(length) > bar_size {
@@ -79,6 +84,7 @@ impl Transport {
         let mut common = None;
         let mut config = None;
         let mut notifications = None;
+        let mut bars = [None; 6];
         for (cap, id) in device.capabilities() {
             if id != 0x09 {
                 continue;
@@ -89,14 +95,15 @@ impl Transport {
             }
             match device.read(cap + 3) as u8 {
                 1 if common.is_none() => {
-                    common = Region::from_cap(device, cap).and_then(|r| r.map(0, COMMON_LENGTH, 4));
+                    common = Region::from_cap(device, cap, &mut bars)
+                        .and_then(|r| r.map(0, COMMON_LENGTH, 4));
                 }
                 2 if length >= 20 && notifications.is_none() => {
-                    notifications =
-                        Region::from_cap(device, cap).map(|region| (region, device.read(cap + 16)));
+                    notifications = Region::from_cap(device, cap, &mut bars)
+                        .map(|region| (region, device.read(cap + 16)));
                 }
                 4 if config.is_none() => {
-                    config = Region::from_cap(device, cap).and_then(|r| r.map(0, 8, 4));
+                    config = Region::from_cap(device, cap, &mut bars).and_then(|r| r.map(0, 8, 4));
                 }
                 _ => {}
             }
@@ -109,7 +116,8 @@ impl Transport {
             notify_multiplier,
             doorbell: None,
         };
-        device.enable_polled_dma();
+        device.enable_mmio();
+        device.disable_legacy_interrupts();
         Some(transport)
     }
 

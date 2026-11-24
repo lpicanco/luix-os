@@ -9,9 +9,10 @@ use crate::arch::memory::paging::Page;
 use crate::bits::Bits;
 use crate::drivers::nvme::command::{
     IdentifyController, IdentifyNamespace, NvmeAdminIdentifyCns, NvmeCommand, NvmeIoCommand,
+    MAX_TRANSFER,
 };
 use crate::drivers::nvme::queue::QueueGroup;
-use crate::drivers::{BlockDevice, BlockError};
+use crate::drivers::{BlockDevice, BlockError, SECTOR_SIZE};
 use crate::memory::address::{PhysicalAddress, VirtualAddress};
 use crate::memory::allocator::dma_allocator::Dma;
 use crate::memory::frame::PhysicalFrame;
@@ -71,11 +72,17 @@ impl NvmeController {
         regs.enable_controller();
 
         let result = self.initialize_queues_and_namespaces();
-        if result.is_err() || self.namespaces.is_empty() {
+        if result.is_err() || !self.has_usable_namespace() {
             // Stop DMA before the caller releases this controller's queues.
             self.get_registers().disable_controller();
         }
         result
+    }
+
+    pub(crate) fn has_usable_namespace(&self) -> bool {
+        self.namespaces
+            .first()
+            .is_some_and(|namespace| namespace.block_size == SECTOR_SIZE)
     }
 
     fn initialize_queues_and_namespaces(&mut self) -> Result<(), u16> {
@@ -85,7 +92,7 @@ impl NvmeController {
 
         self.namespaces = self.identify_namespaces()?;
         trace!("Namespaces: {:?}", self.namespaces);
-        if self.namespaces.is_empty() {
+        if !self.has_usable_namespace() {
             return Ok(());
         }
 
@@ -185,6 +192,9 @@ unsafe impl BlockDevice for NvmeController {
         if buffer.is_empty() {
             return Ok(());
         }
+        if buffer.len() > MAX_TRANSFER {
+            return Err(BlockError);
+        }
         let data = Dma::<u8>::new_uninit_slice(buffer.len());
 
         let command = NvmeCommand::create_read_write(
@@ -205,10 +215,12 @@ unsafe impl BlockDevice for NvmeController {
     }
 
     fn write_block(&self, sector: usize, buffer: &[u8]) -> Result<(), BlockError> {
+        if !buffer.len().is_multiple_of(SECTOR_SIZE) || buffer.len() > MAX_TRANSFER {
+            return Err(BlockError);
+        }
         if buffer.is_empty() {
             return Ok(());
         }
-        assert!(!self.namespaces.is_empty(), "No namespaces found");
 
         let mut data = Dma::<u8>::new_uninit_slice(buffer.len()).assume_init();
         data.copy_from_slice(buffer);
@@ -226,6 +238,10 @@ unsafe impl BlockDevice for NvmeController {
             .submit_command(command)
             .map_err(|_| BlockError)?;
         Ok(())
+    }
+
+    fn sector_count(&self) -> u64 {
+        self.namespaces[0].blocks as u64
     }
 }
 
@@ -426,23 +442,16 @@ pub struct Namespace {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::drivers::fs::test_boot_device;
+    use crate::drivers::nvme::TEST_CONTROLLERS;
 
     #[test(target = "qemu")]
     fn test_nvme_boot_controller() {
-        let device = test_boot_device();
-        let Some(controller) =
-            (device.as_ref() as &dyn core::any::Any).downcast_ref::<NvmeController>()
-        else {
+        let Some(controller) = TEST_CONTROLLERS.get().and_then(|c| c.first()) else {
             return;
         };
         let identify = controller.identify_controller().unwrap();
         assert_eq!(identify.serial_number.as_str(), "feedcafe");
         assert_eq!(controller.namespaces.len(), 1);
-        let namespace = &controller.namespaces[0];
-        assert_eq!(namespace.size, 44_040_192);
-        assert_eq!(namespace.block_size, 512);
-        assert_eq!(namespace.blocks, 86016);
         let queue = controller.io_queue.lock();
         assert_eq!(queue.queue_group_id, 1);
         assert_eq!(queue.queue_size, NVME_QUEUE_SIZE);

@@ -1,3 +1,5 @@
+use alloc::sync::Arc;
+use alloc::vec::Vec;
 use core::cell::UnsafeCell;
 use core::hint::spin_loop;
 use core::mem::{offset_of, size_of, MaybeUninit};
@@ -6,9 +8,10 @@ use core::sync::atomic::{fence, Ordering};
 
 use spin::Mutex;
 
-use super::pci::PciDevice;
-use super::{BlockDevice, BlockError};
+use super::pci::{PciDevice, PCI_DRIVER};
+use super::{BlockDevice, BlockError, SECTOR_SIZE};
 use crate::memory::allocator::dma_allocator::Dma;
+use crate::println;
 
 mod transport;
 use transport::Transport;
@@ -23,7 +26,7 @@ const FEATURES_OK: u8 = 8;
 const NEEDS_RESET: u8 = 64;
 const FAILED: u8 = 128;
 
-const SECTOR_SIZE: usize = 512;
+const RESET_SPINS: usize = 1_000_000;
 const QUEUE_SIZE: usize = 4;
 const DESC_NEXT: u16 = 1;
 const DESC_WRITE: u16 = 2;
@@ -177,14 +180,8 @@ impl RequestQueue {
                 return Err(BlockError);
             }
             self.index = next_index;
-            let expected_length = if operation == REQUEST_READ {
-                SECTOR_SIZE + 1
-            } else {
-                1
-            };
-            if (&raw const (*mem).status).read_volatile() != 0
-                || completion.length != expected_length as u32
-            {
+            // Devices are known to report used lengths inaccurately, so only the status counts.
+            if (&raw const (*mem).status).read_volatile() != 0 {
                 return Err(BlockError);
             }
         }
@@ -202,17 +199,23 @@ impl RequestQueue {
     }
 }
 
-fn reset(transport: &Transport) {
+fn reset(transport: &Transport) -> bool {
     transport.set_status(0);
-    while transport.status() != 0 {
+    for _ in 0..RESET_SPINS {
+        if transport.status() == 0 {
+            return true;
+        }
         spin_loop();
     }
+    false
 }
 
 impl Drop for RequestQueue {
     fn drop(&mut self) {
         // The device must release the rings before their frames can be reused.
-        reset(&self.transport);
+        if !reset(&self.transport) {
+            println!("Virtio block device did not acknowledge reset");
+        }
     }
 }
 
@@ -221,9 +224,37 @@ pub(super) struct VirtioBlockDevice {
     read_only: bool,
 }
 
-pub(super) fn probe(device: &PciDevice) -> Option<VirtioBlockDevice> {
+#[cfg(test)]
+static TEST_DEVICES: spin::Once<Vec<Arc<VirtioBlockDevice>>> = spin::Once::new();
+
+pub(super) fn init() -> Vec<Arc<dyn BlockDevice>> {
+    let devices: Vec<Arc<VirtioBlockDevice>> = PCI_DRIVER
+        .get()
+        .unwrap()
+        .devices()
+        .iter()
+        .filter_map(probe)
+        .map(Arc::new)
+        .collect();
+    for device in &devices {
+        println!(
+            "Virtio block device initialized. Total capacity: {}MB.",
+            device.sector_count() * SECTOR_SIZE as u64 / 1024 / 1024
+        );
+    }
+    #[cfg(test)]
+    TEST_DEVICES.call_once(|| devices.clone());
+    devices
+        .into_iter()
+        .map(|device| device as Arc<dyn BlockDevice>)
+        .collect()
+}
+
+fn probe(device: &PciDevice) -> Option<VirtioBlockDevice> {
     let transport = Transport::probe(device)?;
-    reset(&transport);
+    if !reset(&transport) {
+        return None;
+    }
     transport.set_status(ACKNOWLEDGE);
     transport.set_status(ACKNOWLEDGE | DRIVER);
     let features = transport.device_features() & (VERSION_1 | READ_ONLY);
@@ -237,6 +268,7 @@ pub(super) fn probe(device: &PciDevice) -> Option<VirtioBlockDevice> {
         transport.set_status(ACKNOWLEDGE | DRIVER | FAILED);
         return None;
     }
+    device.enable_bus_mastering();
     let queue = RequestQueue::new(transport)?;
     queue
         .transport
@@ -265,22 +297,40 @@ unsafe impl BlockDevice for VirtioBlockDevice {
     }
 
     fn write_block(&self, sector: usize, buffer: &[u8]) -> Result<(), BlockError> {
+        if self.read_only || !buffer.len().is_multiple_of(SECTOR_SIZE) {
+            return Err(BlockError);
+        }
         if buffer.is_empty() {
             return Ok(());
-        }
-        if self.read_only {
-            return Err(BlockError);
         }
         let mut queue = self.queue.lock();
         queue.check_range(sector, buffer.len())?;
         for (i, chunk) in buffer.chunks(SECTOR_SIZE).enumerate() {
-            let sector = (sector + i) as u64;
-            if chunk.len() < SECTOR_SIZE {
-                queue.transfer(REQUEST_READ, sector)?;
-            }
-            unsafe { ptr::copy_nonoverlapping(chunk.as_ptr(), queue.data(), chunk.len()) };
-            queue.transfer(REQUEST_WRITE, sector)?;
+            unsafe { ptr::copy_nonoverlapping(chunk.as_ptr(), queue.data(), SECTOR_SIZE) };
+            queue.transfer(REQUEST_WRITE, (sector + i) as u64)?;
         }
         Ok(())
+    }
+
+    fn sector_count(&self) -> u64 {
+        self.queue.lock().transport.capacity()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test(target = "qemu")]
+    fn device_error_completes_request_and_next_read_succeeds() {
+        let Some(device) = TEST_DEVICES.get().and_then(|devices| devices.first()) else {
+            return;
+        };
+        let mut queue = device.queue.lock();
+        let end = queue.transport.capacity();
+        assert_eq!(queue.transfer(REQUEST_READ, end), Err(BlockError));
+        queue.transfer(REQUEST_READ, 1).unwrap();
+        let data = unsafe { core::slice::from_raw_parts(queue.data(), 8) };
+        assert_eq!(data, b"EFI PART");
     }
 }

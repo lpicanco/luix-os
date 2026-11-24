@@ -1,6 +1,7 @@
 use alloc::string::String;
 use core::fmt;
 
+use crate::arch::memory::paging::PAGE_SIZE;
 use crate::drivers::nvme::controller::Namespace;
 use crate::memory::address::PhysicalAddress;
 
@@ -9,6 +10,9 @@ pub enum NvmeAdminIdentifyCns {
     IdentifyController = 0x1,
     IdentifyNamespacesId = 0x2,
 }
+
+/// The data pointer holds two PRP entries and no PRP list.
+pub const MAX_TRANSFER: usize = 2 * PAGE_SIZE as usize;
 
 pub enum NvmeIoCommand {
     Write = 0x1,
@@ -100,6 +104,7 @@ impl NvmeCommand {
         }
     }
 
+    /// `data_address` must be page aligned and `data_len` at most `MAX_TRANSFER`.
     pub fn create_read_write(
         opcode: NvmeIoCommand,
         sector: usize,
@@ -109,6 +114,11 @@ impl NvmeCommand {
         nsid: u32,
     ) -> Self {
         let blocks = data_len.div_ceil(block_size);
+        let second_page = if data_len > PAGE_SIZE as usize {
+            data_address.as_u64() + PAGE_SIZE
+        } else {
+            0
+        };
         Self {
             opcode: opcode as u8,
             flags: 0,
@@ -116,9 +126,9 @@ impl NvmeCommand {
             nsid,
             reserved0: [0; 2],
             metadata_ptr: 0,
-            dptr: [data_address.as_u64(), 0],
+            dptr: [data_address.as_u64(), second_page],
             cdw10: sector as u32,
-            cdw11: 0,
+            cdw11: (sector as u64 >> 32) as u32,
             cdw12: (blocks - 1) as u32,
             cdw13: 0,
             cdw14: 0,

@@ -1,137 +1,182 @@
-#[derive(Debug)]
-#[repr(C)]
+//! Checked ELF64 decoding. No Rust references are formed from file bytes.
+use alloc::vec::Vec;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ElfError;
+
 struct ElfHeader {
     e_ident: [u8; 16],
-    e_type: u16,
-    e_machine: u16,
-    e_version: u32,
     e_entry: u64,
-    e_phoff: u64,
-    e_shoff: u64,
-    e_flags: u32,
-    e_ehsize: u16,
-    e_phentsize: u16,
     e_phnum: u16,
-    e_shentsize: u16,
+    e_phentsize: u16,
     e_shnum: u16,
-    e_shstrndx: u16,
+    e_shentsize: u16,
 }
 
-#[repr(u32)]
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum ProgramHeaderType {
-    Null,
     Load,
-    Dynamic,
-    Interp,
-    Note,
-    Shlib,
-    Phdr,
-    Tls,
-    Loos = 0x60000000,
-    Hios = 0x6FFFFFFF,
-    Loproc = 0x70000000,
-    Hiproc = 0x7FFFFFFF,
+    Other(u32),
 }
 
-#[repr(C)]
 pub struct ProgramHeader {
     pub(crate) p_type: ProgramHeaderType,
     p_flags: u32,
     pub(crate) p_offset: u64,
     pub(crate) p_vaddr: u64,
-    p_paddr: u64,
     pub(crate) p_filesz: u64,
     pub(crate) p_memsz: u64,
-    p_align: u64,
 }
 
 impl ProgramHeader {
     pub(crate) fn contains_entry(&self, entry: u64) -> bool {
-        const EXECUTABLE: u32 = 1;
-        self.p_flags & EXECUTABLE != 0
-            && entry >= self.p_vaddr
-            && entry - self.p_vaddr < self.p_filesz
+        self.p_flags & 1 != 0 && entry >= self.p_vaddr && entry - self.p_vaddr < self.p_filesz
     }
-}
-
-#[repr(C)]
-#[derive(Debug)]
-struct SectionHeader {
-    sh_name: u32,
-    sh_type: u32,
-    sh_flags: u64,
-    sh_addr: u64,
-    sh_offset: u64,
-    sh_size: u64,
-    sh_link: u32,
-    sh_info: u32,
-    sh_addralign: u64,
-    sh_entsize: u64,
 }
 
 pub struct ElfFile<'a> {
-    header: &'a ElfHeader,
-    pub(crate) program_headers: &'a [ProgramHeader],
-    section_headers: &'a [SectionHeader],
+    header: ElfHeader,
+    pub(crate) program_headers: Vec<ProgramHeader>,
     buffer: &'a [u8],
 }
 
+fn bytes<const N: usize>(data: &[u8], at: usize) -> Result<[u8; N], ElfError> {
+    data.get(at..at.checked_add(N).ok_or(ElfError)?)
+        .ok_or(ElfError)?
+        .try_into()
+        .map_err(|_| ElfError)
+}
+fn u16_at(data: &[u8], at: usize) -> Result<u16, ElfError> {
+    Ok(u16::from_le_bytes(bytes(data, at)?))
+}
+fn u32_at(data: &[u8], at: usize) -> Result<u32, ElfError> {
+    Ok(u32::from_le_bytes(bytes(data, at)?))
+}
+fn u64_at(data: &[u8], at: usize) -> Result<u64, ElfError> {
+    Ok(u64::from_le_bytes(bytes(data, at)?))
+}
+fn table(data: &[u8], offset: u64, count: u16, size: u16) -> Result<&[u8], ElfError> {
+    let start = usize::try_from(offset).map_err(|_| ElfError)?;
+    let len = usize::from(count)
+        .checked_mul(usize::from(size))
+        .ok_or(ElfError)?;
+    data.get(start..start.checked_add(len).ok_or(ElfError)?)
+        .ok_or(ElfError)
+}
 impl<'a> ElfFile<'a> {
-    pub(crate) fn parse(buffer: &'a [u8]) -> Self {
-        let elf_header = unsafe { &*(buffer.as_ptr() as *const ElfHeader) };
-        let program_headers = unsafe {
-            core::slice::from_raw_parts(
-                (buffer.as_ptr() as *const ProgramHeader).byte_add(elf_header.e_phoff as usize),
-                elf_header.e_phnum as usize,
-            )
-        };
-        let section_headers = unsafe {
-            core::slice::from_raw_parts(
-                (buffer.as_ptr() as *const SectionHeader).byte_add(elf_header.e_shoff as usize),
-                elf_header.e_shnum as usize,
-            )
-        };
-        Self {
-            header: elf_header,
-            program_headers,
-            section_headers,
-            buffer,
+    pub(crate) fn parse(buffer: &'a [u8]) -> Result<Self, ElfError> {
+        let ident: [u8; 16] = bytes(buffer, 0)?;
+        if &ident[..4] != b"\x7fELF"
+            || ident[4..7] != [2, 1, 1]
+            || !matches!(u16_at(buffer, 16)?, 2 | 3)
+            || u16_at(buffer, 18)? != 62
+            || u32_at(buffer, 20)? != 1
+            || u16_at(buffer, 52)? != 64
+        {
+            return Err(ElfError);
         }
+        let header = ElfHeader {
+            e_ident: ident,
+            e_entry: u64_at(buffer, 24)?,
+            e_phentsize: u16_at(buffer, 54)?,
+            e_phnum: u16_at(buffer, 56)?,
+            e_shentsize: u16_at(buffer, 58)?,
+            e_shnum: u16_at(buffer, 60)?,
+        };
+        if header.e_phentsize != 56 || (header.e_shnum != 0 && header.e_shentsize != 64) {
+            return Err(ElfError);
+        }
+        let ph = table(
+            buffer,
+            u64_at(buffer, 32)?,
+            header.e_phnum,
+            header.e_phentsize,
+        )?;
+        if header.e_shnum != 0 {
+            table(
+                buffer,
+                u64_at(buffer, 40)?,
+                header.e_shnum,
+                header.e_shentsize,
+            )?;
+        }
+        let mut program_headers = Vec::new();
+        program_headers
+            .try_reserve(usize::from(header.e_phnum))
+            .map_err(|_| ElfError)?;
+        for p in ph.chunks_exact(56) {
+            let kind = u32_at(p, 0)?;
+            let entry = ProgramHeader {
+                p_type: if kind == 1 {
+                    ProgramHeaderType::Load
+                } else {
+                    ProgramHeaderType::Other(kind)
+                },
+                p_flags: u32_at(p, 4)?,
+                p_offset: u64_at(p, 8)?,
+                p_vaddr: u64_at(p, 16)?,
+                p_filesz: u64_at(p, 32)?,
+                p_memsz: u64_at(p, 40)?,
+            };
+            if kind == 1 {
+                if entry.p_filesz > entry.p_memsz
+                    || entry.p_vaddr.checked_add(entry.p_memsz).is_none()
+                {
+                    return Err(ElfError);
+                }
+                let end = entry.p_offset.checked_add(entry.p_filesz).ok_or(ElfError)?;
+                if end > buffer.len() as u64 {
+                    return Err(ElfError);
+                }
+            }
+            program_headers.push(entry);
+        }
+        Ok(Self {
+            header,
+            program_headers,
+            buffer,
+        })
     }
-
     pub(crate) fn entry_point(&self) -> u64 {
         self.header.e_entry
     }
-
     pub(crate) fn data(&self, header: &ProgramHeader) -> Option<&'a [u8]> {
-        let end = header.p_offset.checked_add(header.p_filesz)?;
-        self.buffer.get(header.p_offset as usize..end as usize)
+        let start = usize::try_from(header.p_offset).ok()?;
+        let size = usize::try_from(header.p_filesz).ok()?;
+        self.buffer.get(start..start.checked_add(size)?)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use alloc::vec;
-
-    use crate::drivers::fs::vfs;
-
     use super::*;
-
+    #[test]
+    fn rejects_truncated_unaligned_and_overflowing_images() {
+        for len in 0..64 {
+            assert!(ElfFile::parse(&[0u8; 64][..len]).is_err());
+        }
+        let mut image = [0u8; 121];
+        let b = &mut image[1..];
+        b[..7].copy_from_slice(b"\x7fELF\x02\x01\x01");
+        b[16..18].copy_from_slice(&2u16.to_le_bytes());
+        b[18..20].copy_from_slice(&62u16.to_le_bytes());
+        b[20..24].copy_from_slice(&1u32.to_le_bytes());
+        b[32..40].copy_from_slice(&64u64.to_le_bytes());
+        b[52..54].copy_from_slice(&64u16.to_le_bytes());
+        b[54..56].copy_from_slice(&56u16.to_le_bytes());
+        b[56..58].copy_from_slice(&1u16.to_le_bytes());
+        assert!(ElfFile::parse(b).is_ok()); // unaligned storage is supported
+        b[32..40].copy_from_slice(&u64::MAX.to_le_bytes());
+        assert!(ElfFile::parse(b).is_err());
+    }
     #[test(target = "qemu")]
     fn test_load_elf() {
-        let file = vfs::open("/boot/kernel").unwrap();
-        let mut buffer = vec![0; file.len()];
-        assert_eq!(file.read_at(0, &mut buffer), Ok(buffer.len()));
-
-        let elf = ElfFile::parse(&buffer);
-
-        assert_eq!(elf.header.e_ident[0..4], [0x7F, 0x45, 0x4C, 0x46]);
-        assert_eq!(elf.header.e_phnum as usize, elf.program_headers.len());
-        assert_eq!(elf.header.e_phentsize as usize, 0x38);
-        assert_eq!(elf.header.e_shnum as usize, elf.section_headers.len());
-        assert_eq!(elf.header.e_shentsize as usize, 0x40);
-        assert_eq!(elf.program_headers.len(), 4);
-        assert!(elf.entry_point() > 0xffffffff80000000 && elf.entry_point() < 0xffffffff90000000);
+        let file = crate::drivers::fs::vfs::open("/boot/kernel").unwrap();
+        let mut data = alloc::vec![0u8; file.len()];
+        assert_eq!(file.read_at(0, &mut data), Ok(data.len()));
+        let elf = ElfFile::parse(&data).unwrap();
+        assert_eq!(&elf.header.e_ident[..4], b"\x7fELF");
+        assert_eq!(elf.program_headers.len(), usize::from(elf.header.e_phnum));
+        assert!(elf.entry_point() >= 0xffffffff80000000);
     }
 }

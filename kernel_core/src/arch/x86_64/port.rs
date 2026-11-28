@@ -1,0 +1,49 @@
+use core::arch::asm;
+
+pub(crate) fn write(port: u16, byte: u8) {
+    // SAFETY: Only trusted device/controller code calls these private port operations, using its discovered or fixed hardware ports.
+    unsafe {
+        asm!(
+        "out dx, al",
+        in("dx") port,
+        in("al") byte,
+        );
+    }
+}
+
+pub(crate) fn write_32(port: u16, value: u32) {
+    // SAFETY: Only trusted device/controller code calls these private port operations, using its discovered or fixed hardware ports.
+    unsafe {
+        asm!(
+        "out dx, eax",
+        in("dx") port,
+        in("eax") value,
+        );
+    }
+}
+
+pub(crate) fn read_32(port: u16) -> u32 {
+    let value: u32;
+    // SAFETY: Only trusted device/controller code calls these private port operations, using its discovered or fixed hardware ports.
+    unsafe {
+        asm!(
+        "in eax, dx",
+        out("eax") value,
+        in("dx") port,
+        );
+    }
+    value
+}
+
+pub(crate) fn read_8(port: u16) -> u8 {
+    let value: u8;
+    // SAFETY: Only trusted device/controller code calls these private port operations, using its discovered or fixed hardware ports.
+    unsafe {
+        asm!(
+        "in al, dx",
+        out("al") value,
+        in("dx") port,
+        );
+    }
+    value
+}

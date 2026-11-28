@@ -26,7 +26,7 @@ name = "kernel"
 version = "0.1.0"
 dependencies = [
  "kernel_api",
- "limine",
+ "kernel_core",
  "spin",
  "test-macros",
  "uuid",
@@ -34,6 +34,22 @@ dependencies = [
 
 [[package]]
 name = "kernel_api"
+version = "0.1.0"
+
+[[package]]
+name = "kernel_core"
+version = "0.1.0"
+dependencies = [
+ "kernel_api",
+ "kernel_core_macros",
+ "limine",
+ "spin",
+ "test-macros",
+ "uuid",
+]
+
+[[package]]
+name = "kernel_core_macros"
 version = "0.1.0"
 
 [[package]]

@@ -1,4 +1,3 @@
-use alloc::boxed::Box;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::cmp::min;
@@ -158,17 +157,18 @@ impl FatArea {
         if cluster < 2 || bytes_per_cluster == 0 {
             return Err(Error::Io);
         }
-        buffer.reserve(bytes_per_cluster);
+        buffer
+            .try_reserve(bytes_per_cluster)
+            .map_err(|_| Error::Io)?;
+        buffer.resize(bytes_per_cluster, 0);
 
         // One block read per sector: the block device does not yet handle
         // transfers that cross a page boundary.
         let first_sector = self.cluster_start_sector(cluster);
-        let spare = &mut buffer.spare_capacity_mut()[..bytes_per_cluster];
+        let spare = buffer.as_mut_slice();
         for (i, sector) in spare.chunks_exact_mut(self.sector_size).enumerate() {
             block_device.read_block(first_sector + i, sector)?;
         }
-        // SAFETY: every byte in 0..bytes_per_cluster was written by read_block above.
-        unsafe { buffer.set_len(bytes_per_cluster) };
         Ok(())
     }
 
@@ -180,12 +180,11 @@ impl FatArea {
     }
 
     fn read_fat(&mut self, block_device: &dyn BlockDevice) -> Result<(), Error> {
-        let mut buffer = Box::<[u8; 512]>::new_uninit();
+        let mut buffer = [0u8; 512];
         for i in 0..self.sectors_per_fat {
             let sector = self.start_sector + self.fat_start_sector + i;
-            block_device.read_block(sector, buffer.as_bytes_mut())?;
-            self.fat
-                .extend_from_slice(unsafe { buffer.assume_init_ref() });
+            block_device.read_block(sector, &mut buffer)?;
+            self.fat.extend_from_slice(&buffer);
         }
         Ok(())
     }
@@ -274,7 +273,6 @@ impl Iterator for DirectoryWalker<'_> {
 #[cfg(test)]
 mod tests {
     use alloc::vec;
-    use core::mem::MaybeUninit;
 
     #[cfg(target_os = "none")]
     use crate::drivers::fs::boot_partition;
@@ -295,18 +293,14 @@ mod tests {
     use crate::drivers::BlockError;
 
     // SAFETY: the range check and copy cover the entire requested buffer.
-    unsafe impl BlockDevice for RamDisk {
-        fn read_block(
-            &self,
-            sector: usize,
-            buffer: &mut [MaybeUninit<u8>],
-        ) -> Result<(), BlockError> {
+    impl BlockDevice for RamDisk {
+        fn read_block(&self, sector: usize, buffer: &mut [u8]) -> Result<(), BlockError> {
             let start = sector * RAM_SECTOR;
             let Some(source) = self.0.get(start..start + buffer.len()) else {
                 return Err(BlockError);
             };
             for (dest, byte) in buffer.iter_mut().zip(source) {
-                dest.write(*byte);
+                *dest = *byte;
             }
             Ok(())
         }
@@ -375,7 +369,7 @@ mod tests {
 
     fn mount_ram_disk(disk: RamDisk) -> Result<Fat32FileSystem, Error> {
         // SAFETY: GptPartitionEntry is plain integers; all-zero is valid.
-        let mut partition: GptPartitionEntry = unsafe { core::mem::zeroed() };
+        let mut partition = GptPartitionEntry::parse(&[0u8; 128]).unwrap();
         partition.starting_lba = 0;
         Fat32FileSystem::read_from_disk(partition, Arc::new(disk))
     }

@@ -7,7 +7,7 @@ set -euo pipefail
 # shellcheck source=../lib.sh
 source "$(dirname "${BASH_SOURCE[0]}")/../lib.sh"
 
-dest=$bin/kernel-test
+dest=$bin/${LUIX_TEST_CRATE:-kernel}-test
 tmp=$(mktemp "$dest.XXXXXX")
 trap 'rm -f "$tmp"' EXIT
 cp "${1:?expected the test executable}" "$tmp"

@@ -46,8 +46,8 @@ The first boot or guest test run downloads the required boot files. Use
 | `run:bios` | Boot in legacy BIOS mode (currently stops during ACPI initialization) |
 | `debug` | Boot with UEFI and wait for GDB on `localhost:1234` |
 | `test` | Run host tests |
-| `test:build` | Build the guest test kernel |
-| `test:qemu` | Build the FAT32 test image once and run the guest suite over both NVMe and modern PCI virtio-blk |
+| `test:build` | Build the core and kernel guest test executables |
+| `test:qemu` | Run both guest suites over NVMe and modern PCI virtio-blk |
 | `fmt`, `fmt:check` | Format, or check formatting |
 | `lint` | Run Clippy and ShellCheck |
 | `ci` | Check formatting, lint, and run all tests |
@@ -55,6 +55,12 @@ The first boot or guest test run downloads the required boot files. Use
 
 Kernel tests marked `#[test]` run on the host and in QEMU. Tests marked
 `#[test(target = "qemu")]` run only in QEMU.
+
+The runtime unsafe boundary lives in `kernel_core`. `kernel` and the kernel build of
+`kernel_api` forbid unsafe code. Run `cargo xtask check-unsafe` to check
+the boundary and its compiling/rejected consumers. See
+[the extraction and safety contracts](docs/kernel-core.md) for module locations,
+public APIs, validation, and the remaining driver migration.
 
 ## Roadmap
 

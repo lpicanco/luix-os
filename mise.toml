@@ -39,14 +39,17 @@ run = "cargo build --locked -p kernel"
 [tasks.test]
 description = "Run host tests"
 run = [
-    "cargo test --locked -p kernel --lib --target host-tuple",
+    "cargo test --locked -p kernel -p kernel_core --lib --target host-tuple",
     "cargo test --locked --manifest-path tools/xtask/Cargo.toml --target host-tuple",
 ]
 
 [tasks."test:build"]
-description = "Build the guest test kernel without booting it"
+description = "Build core and kernel guest test images without booting them"
 depends = ["build:init", "build:fixtures"]
-run = """cargo test --locked -p kernel --lib --config 'target.x86_64-unknown-none.runner=".mise-tasks/test/stage"'"""
+run = [
+    """env LUIX_TEST_CRATE=kernel-core cargo test --locked -p kernel_core --lib --config 'target.x86_64-unknown-none.runner=".mise-tasks/test/stage"'""",
+    """cargo test --locked -p kernel --lib --config 'target.x86_64-unknown-none.runner=".mise-tasks/test/stage"'""",
+]
 
 [tasks."image:test"]
 description = "Create the test disk image"
@@ -60,9 +63,14 @@ depends = ["build"]
 run = "cargo xtask image --bios"
 
 [tasks."test:qemu"]
-description = "Boot the same test image over NVMe and virtio-blk and run guest tests on each"
+description = "Boot core and kernel guest suites over both NVMe and virtio-blk"
 depends = ["image:test"]
-run = "cargo xtask test-qemu"
+run = [
+    "cargo xtask image --test target/x86_64-unknown-none/debug/kernel-core-test",
+    "cargo xtask test-qemu",
+    "cargo xtask image --test",
+    "cargo xtask test-qemu",
+]
 
 [tasks."test:all"]
 description = "Run host and guest tests"
@@ -80,7 +88,8 @@ run = ["cargo fmt --all --check", "cargo fmt --manifest-path tools/xtask/Cargo.t
 description = "Type-check the kernel, userland, and host tools"
 run = [
     "cargo check --locked -p kernel -p init -p process-test",
-    "cargo check --locked -p kernel --lib --profile test --target host-tuple",
+    "cargo xtask check-unsafe",
+    "cargo check --locked -p kernel -p kernel_core --lib --profile test --target host-tuple",
     "cargo check --locked -p test-macros --target host-tuple",
     "cargo check --locked --manifest-path tools/xtask/Cargo.toml --target host-tuple",
 ]
@@ -89,9 +98,11 @@ run = [
 description = "Run Clippy and ShellCheck"
 run = [
     "cargo clippy --locked -p kernel -p init -p process-test",
-    "cargo clippy --locked -p kernel --lib --profile test --target host-tuple",
+    "cargo clippy --locked -p kernel -p kernel_core --lib --tests",
+    "cargo clippy --locked -p kernel -p kernel_core --lib --tests --target host-tuple",
     "cargo clippy --locked -p test-macros --target host-tuple",
     "cargo clippy --locked --manifest-path tools/xtask/Cargo.toml --target host-tuple",
+    "cargo xtask check-unsafe",
     "find .mise-tasks -type f -exec shellcheck -x {} +",
 ]
 

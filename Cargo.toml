@@ -2,6 +2,8 @@
 resolver = "2"
 members = [
     "kernel",
+    "kernel_core",
+    "kernel_core_macros",
     "tools/test-macros",
     "kernel_api",
     "userland/init",

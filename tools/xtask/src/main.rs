@@ -1,6 +1,7 @@
 mod firmware;
 mod image;
 mod qemu;
+mod unsafe_boundary;
 
 use std::env;
 use std::ffi::{OsStr, OsString};
@@ -9,7 +10,7 @@ use std::process::Command;
 
 use anyhow::{bail, ensure, Context, Result};
 
-const USAGE: &str = "Usage:\n  cargo xtask setup [limine|ovmf]\n  cargo xtask image [--test|--bios] [kernel]\n  cargo xtask test-qemu";
+const USAGE: &str = "Usage:\n  cargo xtask setup [limine|ovmf]\n  cargo xtask image [--test|--bios] [kernel]\n  cargo xtask test-qemu\n  cargo xtask check-unsafe";
 const NORMAL_IMAGE: &str = "luix-os.img";
 const TEST_IMAGE: &str = "luix-os-test.img";
 const BIOS_IMAGE: &str = "luix-os-bios.img";
@@ -44,6 +45,7 @@ fn main() -> Result<()> {
     let paths = Paths::new();
 
     match args.split_first() {
+        Some((command, [])) if command == "check-unsafe" => unsafe_boundary::check(paths.root),
         Some((command, rest)) if command == "setup" => setup(&paths.cache, rest),
         Some((command, rest)) if command == "image" => create_image(&paths, rest),
         Some((command, [])) if command == "test-qemu" => {

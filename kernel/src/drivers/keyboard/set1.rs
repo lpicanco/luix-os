@@ -183,3 +183,11 @@ impl ScanCodeSet1 {
         }
     }
 }
+
+impl ScanCodeSet1 {
+    pub fn from_byte(byte: u8) -> Option<Self> {
+        match byte {
+            _ => None,
+        }
+    }
+}

@@ -54,5 +54,5 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: mise run check
       - run: mise run build
-      # Builds the guest test kernel without booting it.
+      # Builds both the core and kernel guest test executables without booting them.
       - run: mise run test:build

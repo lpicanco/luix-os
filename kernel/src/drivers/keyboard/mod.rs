@@ -22,19 +22,43 @@ pub fn handle_key(key: u8) {
 
 #[cfg(test)]
 mod tests {
-    use alloc::collections::VecDeque;
+    use super::{handle_key, key::KeyCode, KeyEvent, RingBuffer, KEY_BUFFER};
 
-    #[test(target = "qemu")]
-    fn test_key_buffer() {
-        let mut ring_buffer = VecDeque::with_capacity(3);
+    #[test]
+    fn queues_key_presses_and_ignores_releases_and_unsupported_codes() {
+        let presses = [
+            (0x01, KeyCode::Escape, None),
+            (0x02, KeyCode::Num1, Some('1')),
+            (0x1e, KeyCode::A, Some('a')),
+            (0x1c, KeyCode::Enter, Some('\n')),
+            (0x39, KeyCode::Space, Some(' ')),
+            (0x4f, KeyCode::Keypad1, Some('1')),
+            (0x53, KeyCode::KeypadPeriod, Some('.')),
+            (0x57, KeyCode::F11, None),
+            (0x58, KeyCode::F12, None),
+        ];
+        *KEY_BUFFER.lock() = RingBuffer::new();
 
-        ring_buffer.push_back(1);
-        ring_buffer.push_back(2);
-        ring_buffer.push_back(3);
-        ring_buffer.push_back(4);
-        ring_buffer.push_back(5);
-        assert_eq!(ring_buffer.pop_front(), Some(1));
-        assert_eq!(ring_buffer.pop_front(), Some(2));
-        assert_eq!(ring_buffer.pop_front(), Some(3));
+        for (scan_code, _, _) in presses {
+            handle_key(scan_code);
+            handle_key(scan_code | 0x80);
+        }
+        for scan_code in [0x00, 0x54, 0x55, 0x56, 0x59, 0x7f, 0x80, 0xe0, 0xe1, 0xff] {
+            handle_key(scan_code);
+        }
+
+        let mut buffer = KEY_BUFFER.lock();
+        for (scan_code, key_code, character) in presses {
+            let event = buffer.pop().expect("key press must be queued");
+            assert_eq!(
+                event,
+                KeyEvent {
+                    key: scan_code,
+                    key_code
+                }
+            );
+            assert_eq!(event.decode(), character);
+        }
+        assert_eq!(buffer.pop(), None);
     }
 }

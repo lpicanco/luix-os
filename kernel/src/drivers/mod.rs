@@ -1,6 +1,5 @@
 pub(crate) use kernel_core::block::{BlockDevice, BlockError};
 pub(crate) mod fs;
-#[cfg(target_os = "none")]
 pub mod keyboard;
 
 #[cfg(target_os = "none")]

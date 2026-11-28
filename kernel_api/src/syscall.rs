@@ -3,6 +3,7 @@ pub const EXIT: usize = 0x2;
 // TODO: Remove this. This syscall is for testing purposes only.
 pub const PRINT_LINE: usize = 0x404;
 
+#[cfg(feature = "user")]
 #[macro_export]
 macro_rules! make_syscall {
     ($n:expr) => {
@@ -16,6 +17,7 @@ macro_rules! make_syscall {
     };
 }
 
+#[cfg(feature = "user")]
 #[inline(always)]
 pub fn spawn(path: &str) {
     unsafe {
@@ -23,6 +25,7 @@ pub fn spawn(path: &str) {
     }
 }
 
+#[cfg(feature = "user")]
 #[inline(always)]
 pub fn exit() {
     // TODO: add enum for exit code
@@ -31,6 +34,7 @@ pub fn exit() {
     }
 }
 
+#[cfg(feature = "user")]
 #[inline(always)]
 pub fn println(s: &str) {
     unsafe {

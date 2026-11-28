@@ -1,8 +1,6 @@
-use core::mem::MaybeUninit;
-
 #[derive(Debug)]
 pub struct RingBuffer<T, const N: usize> {
-    buffer: [MaybeUninit<T>; N],
+    buffer: [Option<T>; N],
     head: usize,
     tail: usize,
 }
@@ -10,32 +8,37 @@ pub struct RingBuffer<T, const N: usize> {
 impl<T, const N: usize> RingBuffer<T, N> {
     pub const fn new() -> Self {
         Self {
-            buffer: unsafe { MaybeUninit::uninit().assume_init() },
+            buffer: [const { None }; N],
             head: 0,
             tail: 0,
         }
     }
 
     pub fn push(&mut self, value: T) {
+        if N < 2 {
+            return;
+        }
         if (self.head + 1) % N == self.tail {
+            self.buffer[self.tail].take();
             self.tail = (self.tail + 1) % N;
         }
-        unsafe {
-            self.buffer[self.head].as_mut_ptr().write(value);
-        }
+        self.buffer[self.head] = Some(value);
 
         self.head = (self.head + 1) % N;
     }
 
     pub fn pop(&mut self) -> Option<T> {
+        if N < 2 {
+            return None;
+        }
         if self.head == self.tail {
             return None;
         }
 
-        let value = unsafe { self.buffer[self.tail].as_ptr().read() };
+        let value = self.buffer[self.tail].take();
 
         self.tail = (self.tail + 1) % N;
-        Some(value)
+        value
     }
 }
 

@@ -1,0 +1,17 @@
+[package]
+name = "kernel_core"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+limine = { version = "0.3.1", features = ["uuid"] }
+spin = "0.12.3"
+uuid = { version = "1.11.1", default-features = false }
+kernel_core_macros = { path = "../kernel_core_macros" }
+kernel_api = { path = "../kernel_api", default-features = false }
+
+[dev-dependencies]
+test-macros = { path = "../tools/test-macros" }
+
+[features]
+test-support = []

@@ -1,5 +1,3 @@
-use alloc::boxed::Box;
-
 use crate::drivers::{BlockDevice, BlockError};
 
 #[repr(C, packed)]
@@ -40,18 +38,18 @@ impl GuidedPartitionTable {
     pub(crate) fn read_from_disk(
         block_device: &dyn BlockDevice,
     ) -> Result<Option<Self>, BlockError> {
-        let mut buffer = Box::<GptHeader>::new_uninit();
-        block_device.read_block(1, buffer.as_bytes_mut())?;
-
-        let header = unsafe { *buffer.assume_init() };
+        let mut buffer = [0u8; 92];
+        block_device.read_block(1, &mut buffer)?;
+        let header = GptHeader::parse(&buffer).ok_or(BlockError)?;
         if header.signature != *b"EFI PART" {
             return Ok(None);
         }
 
         // TODO: Check CRC32 and support more than one partition entry block
-        let mut buffer = Box::<GptPartitionEntry>::new_uninit();
-        block_device.read_block(header.partition_entry_lba as usize, buffer.as_bytes_mut())?;
-        let entry = unsafe { *buffer.assume_init() };
+        let mut buffer = [0u8; 128];
+        let sector = usize::try_from(header.partition_entry_lba).map_err(|_| BlockError)?;
+        block_device.read_block(sector, &mut buffer)?;
+        let entry = GptPartitionEntry::parse(&buffer).ok_or(BlockError)?;
 
         Ok(Some(Self { header, entry }))
     }
@@ -114,5 +112,43 @@ mod tests {
         );
         assert_eq!({ gpt.entry.starting_lba }, 0x800);
         assert_eq!({ gpt.entry.ending_lba }, { gpt.header.last_usable_lba });
+    }
+}
+
+impl GptHeader {
+    pub(crate) fn parse(bytes: &[u8]) -> Option<Self> {
+        let bytes = bytes.get(..92)?;
+        Some(Self {
+            signature: bytes.get(0..8)?.try_into().ok()?,
+            revision: u32::from_le_bytes(bytes.get(8..12)?.try_into().ok()?),
+            header_size: u32::from_le_bytes(bytes.get(12..16)?.try_into().ok()?),
+            header_crc32: u32::from_le_bytes(bytes.get(16..20)?.try_into().ok()?),
+            reserved: u32::from_le_bytes(bytes.get(20..24)?.try_into().ok()?),
+            header_lba: u64::from_le_bytes(bytes.get(24..32)?.try_into().ok()?),
+            alternate_lba: u64::from_le_bytes(bytes.get(32..40)?.try_into().ok()?),
+            first_usable_lba: u64::from_le_bytes(bytes.get(40..48)?.try_into().ok()?),
+            last_usable_lba: u64::from_le_bytes(bytes.get(48..56)?.try_into().ok()?),
+            disk_guid: bytes.get(56..72)?.try_into().ok()?,
+            partition_entry_lba: u64::from_le_bytes(bytes.get(72..80)?.try_into().ok()?),
+            partition_entry_count: u32::from_le_bytes(bytes.get(80..84)?.try_into().ok()?),
+            partition_entry_size: u32::from_le_bytes(bytes.get(84..88)?.try_into().ok()?),
+            partition_entry_crc32: u32::from_le_bytes(bytes.get(88..92)?.try_into().ok()?),
+        })
+    }
+}
+
+impl GptPartitionEntry {
+    pub(crate) fn parse(bytes: &[u8]) -> Option<Self> {
+        let bytes = bytes.get(..128)?;
+        Some(Self {
+            partition_type_guid: bytes.get(0..16)?.try_into().ok()?,
+            unique_partition_guid: bytes.get(16..32)?.try_into().ok()?,
+            starting_lba: u64::from_le_bytes(bytes.get(32..40)?.try_into().ok()?),
+            ending_lba: u64::from_le_bytes(bytes.get(40..48)?.try_into().ok()?),
+            attributes: u64::from_le_bytes(bytes.get(48..56)?.try_into().ok()?),
+            partition_name: core::array::from_fn(|i| {
+                u16::from_le_bytes([bytes[56 + i * 2], bytes[56 + i * 2 + 1]])
+            }),
+        })
     }
 }

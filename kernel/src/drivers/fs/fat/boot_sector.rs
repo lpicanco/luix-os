@@ -1,5 +1,3 @@
-use alloc::boxed::Box;
-
 use crate::drivers::fs::gpt::GptPartitionEntry;
 use crate::drivers::{BlockDevice, BlockError};
 
@@ -64,9 +62,21 @@ impl Fat32BootSector {
         partition: &GptPartitionEntry,
         block_device: &dyn BlockDevice,
     ) -> Result<Self, BlockError> {
-        let mut buffer = Box::<Self>::new_uninit();
-        block_device.read_block(partition.starting_lba as usize, buffer.as_bytes_mut())?;
-        Ok(unsafe { *buffer.assume_init() })
+        let mut buffer = [0u8; 90];
+        block_device.read_block(
+            usize::try_from(partition.starting_lba).map_err(|_| BlockError)?,
+            &mut buffer,
+        )?;
+        let sector = Self::parse(&buffer).ok_or(BlockError)?;
+        let bpb = sector.bios_parameter_block;
+        if bpb.bytes_per_sector() != 512
+            || !bpb.sectors_per_cluster.is_power_of_two()
+            || bpb.reserved_sectors() == 0
+            || bpb.fat_count == 0
+        {
+            return Err(BlockError);
+        }
+        Ok(sector)
     }
 
     pub fn sectors_per_fat(&self) -> u32 {
@@ -133,5 +143,51 @@ mod tests {
             / 4;
         assert!(data_sectors >= 65_525);
         assert!(fat_entries >= data_sectors + 2);
+    }
+}
+
+impl BiosParameterBlock {
+    pub(crate) fn parse(bytes: &[u8]) -> Option<Self> {
+        let bytes = bytes.get(..36)?;
+        Some(Self {
+            boot_jump: bytes.get(0..3)?.try_into().ok()?,
+            oem_identifier: bytes.get(3..11)?.try_into().ok()?,
+            bytes_per_sector_le: u16::from_le_bytes(bytes.get(11..13)?.try_into().ok()?),
+            sectors_per_cluster: *bytes.get(13)?,
+            reserved_sectors_le: u16::from_le_bytes(bytes.get(14..16)?.try_into().ok()?),
+            fat_count: *bytes.get(16)?,
+            root_directories_count_le: u16::from_le_bytes(bytes.get(17..19)?.try_into().ok()?),
+            total_sectors_in_logical_volume: u16::from_le_bytes(
+                bytes.get(19..21)?.try_into().ok()?,
+            ),
+            media_descriptor_type: *bytes.get(21)?,
+            sectors_per_fat: u16::from_le_bytes(bytes.get(22..24)?.try_into().ok()?),
+            sectors_per_track: u16::from_le_bytes(bytes.get(24..26)?.try_into().ok()?),
+            head_count: u16::from_le_bytes(bytes.get(26..28)?.try_into().ok()?),
+            hidden_sector_count: u32::from_le_bytes(bytes.get(28..32)?.try_into().ok()?),
+            large_sector_count_le: u32::from_le_bytes(bytes.get(32..36)?.try_into().ok()?),
+        })
+    }
+}
+
+impl Fat32BootSector {
+    pub(crate) fn parse(bytes: &[u8]) -> Option<Self> {
+        let bytes = bytes.get(..90)?;
+        Some(Self {
+            bios_parameter_block: BiosParameterBlock::parse(bytes.get(..36)?)?,
+            sectors_per_fat_le: u32::from_le_bytes(bytes.get(36..40)?.try_into().ok()?),
+            flags: u16::from_le_bytes(bytes.get(40..42)?.try_into().ok()?),
+            fat_version: u16::from_le_bytes(bytes.get(42..44)?.try_into().ok()?),
+            root_cluster_number: u32::from_le_bytes(bytes.get(44..48)?.try_into().ok()?),
+            fs_info_sector_number: u16::from_le_bytes(bytes.get(48..50)?.try_into().ok()?),
+            backup_boot_sector_number: u16::from_le_bytes(bytes.get(50..52)?.try_into().ok()?),
+            reserved: bytes.get(52..64)?.try_into().ok()?,
+            drive_number: *bytes.get(64)?,
+            windows_nt_flags: *bytes.get(65)?,
+            signature: *bytes.get(66)?,
+            volume_id: u32::from_le_bytes(bytes.get(67..71)?.try_into().ok()?),
+            volume_label: bytes.get(71..82)?.try_into().ok()?,
+            system_identifier: bytes.get(82..90)?.try_into().ok()?,
+        })
     }
 }
